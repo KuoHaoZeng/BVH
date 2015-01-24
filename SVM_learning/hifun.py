@@ -137,12 +137,12 @@ def Load_FileBook(SplitDir,listStart,listNum):
 	index=0
 
 
-	###f=file('/home/al-farabi/Desktop/inList_tt3P.txt','w')
+	###f=file('/home/al-farabi/Desktop/inList_tt1T.txt','w')
 
 
 	for i in Dir:
 		Temp=i.split('_test')
-		if (Temp[1][len(Temp[1])-5]!=str(3)):
+		if (Temp[1][len(Temp[1])-5]!=str(1)):
 			continue
 		elif index<listStart:
 			index+=1
@@ -161,8 +161,8 @@ def Load_FileBook(SplitDir,listStart,listNum):
 			filebook[index-listStart][xx]['Filename']=fileTemp[0]
 			filebook[index-listStart][xx]['Pvalue']=fileTemp[1][len(fileTemp[1])-3]
 			
-			###if filebook[index-listStart][xx]['Pvalue']==2:
-				###f.write('/home/al-farabi/Desktop/video_pool/hmbd51_org/'+filebook[index-listStart][xx]['Chapter']+'/'+filebook[index-listStart][xx]['Filename']+'.avi '+str(filebook[index-listStart][xx]['Class'])+'\n')
+			###if filebook[index-listStart][xx]['Pvalue']==1:
+				###f.write('/home/al-farabi/Desktop/video_pool/hmdb51_org/'+filebook[index-listStart][xx]['Chapter']+'/'+filebook[index-listStart][xx]['Filename']+'.avi '+str(filebook[index-listStart][xx]['Class'])+'\n')
 		
 		index+=1
 		fileDir.close()
