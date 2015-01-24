@@ -132,17 +132,23 @@ def Load_Fisher_Initial():
 def Load_FileBook(SplitDir,listStart,listNum):
 	# Filebook Load
 	Dir=os.listdir(SplitDir)
-	fileType=np.dtype({'names':['Chapter','Section','Length','Err','Filename','Pvalue'],'formats':['S128','i','i','float32','S256','i']})
+	fileType=np.dtype({'names':['Chapter','Section','Length','Err','Filename','Pvalue','Class'],'formats':['S128','i','i','float32','S256','i','i']})
 	filebook=np.empty([listNum,600],dtype=fileType)
 	index=0
+
+
+	###f=file('/home/al-farabi/Desktop/inList_tt3P.txt','w')
+
+
 	for i in Dir:
 		Temp=i.split('_test')
-		if (Temp[1][len(Temp[1])-5]!=str(2)):
+		if (Temp[1][len(Temp[1])-5]!=str(3)):
 			continue
 		elif index<listStart:
 			index+=1
 			continue
-
+		
+		filebook[index-listStart][:]['Class']=index
 		filebook[index-listStart][:]['Chapter']=Temp[0]
 		filebook[index-listStart][:]['Section']=Temp[1][len(Temp[1])-5]
 		fileDir=open(SplitDir+i,'r')
@@ -154,6 +160,10 @@ def Load_FileBook(SplitDir,listStart,listNum):
 			fileTemp=fileTemp.split('.avi')
 			filebook[index-listStart][xx]['Filename']=fileTemp[0]
 			filebook[index-listStart][xx]['Pvalue']=fileTemp[1][len(fileTemp[1])-3]
+			
+			###if filebook[index-listStart][xx]['Pvalue']==2:
+				###f.write('/home/al-farabi/Desktop/video_pool/hmbd51_org/'+filebook[index-listStart][xx]['Chapter']+'/'+filebook[index-listStart][xx]['Filename']+'.avi '+str(filebook[index-listStart][xx]['Class'])+'\n')
+		
 		index+=1
 		fileDir.close()
 		if index>=(listStart+listNum):
