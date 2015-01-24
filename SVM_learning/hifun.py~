@@ -1,0 +1,345 @@
+import numpy as np
+from numpy import linalg as LA
+import os
+import sys
+import random
+import vlfeat
+
+def Load_Initial():
+	listNum=51
+	listStart=0
+	K=4000
+	NCluster=4000
+	SubSample=0
+	PreSet=1
+	if len(sys.argv)==8:
+		listNum=int(sys.argv[7])
+		listStart=int(sys.argv[6])
+		K=int(sys.argv[5])
+		NCluster=int(sys.argv[4])
+		SubSample=int(sys.argv[3])
+		PreSet=int(sys.argv[2])
+	elif len(sys.argv)==7:
+		listStart=int(sys.argv[6])
+		K=int(sys.argv[5])
+		NCluster=int(sys.argv[4])
+		SubSample=int(sys.argv[3])
+		PreSet=int(sys.argv[2])
+	elif len(sys.argv)==6:
+		K=int(sys.argv[5])
+		NCluster=int(sys.argv[4])
+		SubSample=int(sys.argv[3])
+		PreSet=int(sys.argv[2])
+	elif len(sys.argv)==5:
+		NCluster=int(sys.argv[4])
+		SubSample=int(sys.argv[3])
+		PreSet=int(sys.argv[2])
+	elif len(sys.argv)==4:
+		SubSample=int(sys.argv[3])
+		PreSet=int(sys.argv[2])
+	elif len(sys.argv)==3:
+		PreSet=int(sys.argv[2])
+
+	if len(sys.argv)>=2:
+		if sys.argv[1][0]=='T':
+			VectorDim=30
+			Ini_Index=10
+		elif sys.argv[1][0]=='H':
+			if sys.argv[1][2]=='G':
+				VectorDim=96
+				Ini_Index=40
+			else:
+				VectorDim=108
+				Ini_Index=136
+		elif sys.argv[1][0]=='M':
+			VectorDim=96
+			if sys.argv[1][3]=='x':
+				Ini_Index=244
+			else:
+				Ini_Index=340
+		elif sys.argv[1][0]=='A':
+			VectorDim=426
+			Ini_Index=10
+		else:
+			print('\nFucking Wrong Dataset type!!!\n')
+			sys.exit()
+	else:
+		VectorDim=426
+		Ini_Index=10
+	
+	print('\n---Initial setting loaded done---')
+	print('Initial setting: VectorDim='+str(VectorDim)+' Ini_Index='+str(Ini_Index)+' SubSample='+str(SubSample)+' NCluster='+str(NCluster)+' K='+str(K)+' PreSet='+str(PreSet)+'\n')
+	return VectorDim,Ini_Index,PreSet,SubSample,NCluster,K,listStart,listNum
+
+def Load_Fisher_Initial():
+	listNum=51
+	listStart=0
+	K=16
+	SubSample=0
+	PreSet=1
+	if len(sys.argv)==7:
+		listNum=int(sys.argv[6])
+		listStart=int(sys.argv[5])
+		K=int(sys.argv[4])
+		SubSample=int(sys.argv[3])
+		PreSet=int(sys.argv[2])
+	elif len(sys.argv)==6:
+		listStart=int(sys.argv[5])
+		K=int(sys.argv[4])
+		SubSample=int(sys.argv[3])
+		PreSet=int(sys.argv[2])
+	elif len(sys.argv)==5:
+		K=int(sys.argv[4])
+		SubSample=int(sys.argv[3])
+		PreSet=int(sys.argv[2])
+	elif len(sys.argv)==4:
+		SubSample=int(sys.argv[3])
+		PreSet=int(sys.argv[2])
+	elif len(sys.argv)==3:
+		PreSet=int(sys.argv[2])
+
+	if len(sys.argv)>=2:
+		if sys.argv[1][0]=='T':
+			VectorDim=30
+			Ini_Index=10
+		elif sys.argv[1][0]=='H':
+			if sys.argv[1][2]=='G':
+				VectorDim=96
+				Ini_Index=40
+			else:
+				VectorDim=108
+				Ini_Index=136
+		elif sys.argv[1][0]=='M':
+			VectorDim=96
+			if sys.argv[1][3]=='x':
+				Ini_Index=244
+			else:
+				Ini_Index=340
+		elif sys.argv[1][0]=='A':
+			VectorDim=426
+			Ini_Index=10
+		else:
+			print('\nFucking Wrong Dataset type!!!\n')
+			sys.exit()
+	else:
+		VectorDim=426
+		Ini_Index=10
+	
+	print('\n---Initial setting loaded done---')
+	print('Initial setting: VectorDim='+str(VectorDim)+' Ini_Index='+str(Ini_Index)+' SubSample='+str(SubSample)+' K='+str(K)+' PreSet='+str(PreSet)+'\n')
+	return VectorDim,Ini_Index,PreSet,SubSample,K,listStart,listNum
+
+def Load_FileBook(SplitDir,listStart,listNum):
+	# Filebook Load
+	Dir=os.listdir(SplitDir)
+	fileType=np.dtype({'names':['Chapter','Section','Length','Err','Filename','Pvalue'],'formats':['S128','i','i','float32','S256','i']})
+	filebook=np.empty([listNum,600],dtype=fileType)
+	index=0
+	for i in Dir:
+		Temp=i.split('_test')
+		if (Temp[1][len(Temp[1])-5]!=str(1)):
+			continue
+		elif index<listStart:
+			index+=1
+			continue
+
+		filebook[index-listStart][:]['Chapter']=Temp[0]
+		filebook[index-listStart][:]['Section']=Temp[1][len(Temp[1])-5]
+		fileDir=open(SplitDir+i,'r')
+		lines=len(fileDir.readlines())
+		filebook[index-listStart][:]['Length']=lines
+		fileDir.seek(0,0)
+		for xx in range(lines):
+			fileTemp=fileDir.readline()
+			fileTemp=fileTemp.split('.avi')
+			filebook[index-listStart][xx]['Filename']=fileTemp[0]
+			filebook[index-listStart][xx]['Pvalue']=fileTemp[1][len(fileTemp[1])-3]
+		index+=1
+		fileDir.close()
+		if index>=(listStart+listNum):
+			break
+
+	print('---Filebook loaded done---')
+	print('Total pages are: '+str(listNum)+'\n')
+	return filebook,listNum
+
+def Load_Features(featureDir,filebook_one,SubSample=0,Ini_Index=10,VectorDim=426):
+	# Features Load
+	Dir=os.listdir(featureDir)
+	Fir=True
+	for i in Dir:
+		indexNum=np.where(filebook_one['Filename']==i)
+		if i in filebook_one['Filename'] and filebook_one[indexNum[0][0]]['Pvalue']==1:
+			print('Loading... '+i)
+			with open(featureDir+i, 'rb') as f:
+				raw = np.fromfile(f, np.float32)
+
+			f.close()
+			Len=len(raw)
+			FrameNum=Len/436
+
+			FrameNumVec=np.arange(FrameNum-1)
+			if FrameNum>SubSample and SubSample!=0:
+				RandomSap=random.sample(FrameNumVec,SubSample)
+				DataTemp=np.arange(VectorDim*SubSample)
+				DataTemp=np.float32(DataTemp)
+			else:
+				RandomSap=random.sample(FrameNumVec,FrameNum-1)
+				DataTemp=np.arange(VectorDim*(FrameNum-1))
+				DataTemp=np.float32(DataTemp)
+			xx=0
+			for j in RandomSap:
+				DataTemp[xx*VectorDim:(xx+1)*VectorDim]=raw[j*436+Ini_Index:j*436+Ini_Index+VectorDim]
+				xx+=1
+			DataTemp.shape=-1,VectorDim
+			if Fir==True:
+				Data=DataTemp.copy()
+				Fir=False
+			else:
+				Data=np.vstack((Data,DataTemp))
+
+			#print(DataTemp)
+
+	print('---Total features loaded done---')
+	print('Total dimension is: '+str(Data.shape[0])+'\n')
+	return 	Data
+
+def Load_Unit_Features(Num,featureDir,filebook_one,PreSet,SubSample=0,Ini_Index=10,VectorDim=426):
+	# Features Load
+	Data=np.arange(VectorDim)
+	Data=np.float32(Data-Data)
+        Dir=os.listdir(featureDir)
+        if Num >= len(Dir):
+                Num=-1
+                return Data,Num
+
+	indexNum=np.where(filebook_one['Filename']==Dir[Num])
+
+	if Dir[Num] in filebook_one['Filename'] and filebook_one[indexNum[0][0]]['Pvalue']==PreSet:
+                with open(featureDir+Dir[Num], 'rb') as f:
+                	raw = np.fromfile(f, np.float32)
+                
+		f.close()
+                Len=len(raw)
+                FrameNum=Len/436
+
+                FrameNumVec=np.arange(FrameNum-1)
+                if FrameNum>SubSample and SubSample!=0:
+                	RandomSap=random.sample(FrameNumVec,SubSample)
+                        DataTemp=np.arange(VectorDim*SubSample)
+                        DataTemp=np.float32(DataTemp)
+                else:
+                        RandomSap=FrameNumVec.copy()
+                        DataTemp=np.arange(VectorDim*(FrameNum-1))
+                        DataTemp=np.float32(DataTemp)
+                xx=0
+                for j in RandomSap:
+                        DataTemp[xx*VectorDim:(xx+1)*VectorDim]=raw[j*436+Ini_Index:j*436+Ini_Index+VectorDim]
+                        xx+=1
+                DataTemp.shape=-1,VectorDim
+		Data=DataTemp.copy()
+		
+		print('---Unit features loaded done---')
+		print('Here is: '+filebook_one[indexNum[0][0]]['Filename']+' x'+str(Data.shape[0])+'\n')
+	else:
+		Num+=1
+		[Data,Num]=Load_Unit_Features(Num,featureDir,filebook_one,PreSet,SubSample,Ini_Index,VectorDim)	
+
+	Data.shape=-1,VectorDim
+	return Data,Num
+
+def Random_Features(Data,Subset):
+	# Features Random Seletion
+	DataTemp=0
+	DataTemp=Data.copy()
+	SampleVec=np.arange(DataTemp.shape[0])
+	RandomSap=random.sample(SampleVec,Subset)
+	Data=0
+	Data=np.arange((Subset)*DataTemp.shape[1])
+	Data=np.float32(Data-Data)
+	Data.shape=Subset,-1
+	xx=0
+	for j in RandomSap:
+		Data[xx]=DataTemp[j]
+		xx+=1
+
+	print('---Random subsample done---')
+	print('Sampling dimension is: '+str(Data.shape[0])+'\n')
+	return Data
+
+def float32TOuint8(Data):
+	# Data Transpose #1
+	Data=Data.T
+	Temp=Data.copy()
+	Temp=np.uint8(Temp)
+	# Initialization
+	Maximum=0
+	Minimum=100
+	MaxV=np.arange(Data.shape[0])
+	MaxV=np.float32(MaxV-MaxV)
+	MinV=np.arange(Data.shape[0])
+	MinV=np.float32(MinV-MinV)
+	MaxMinM=np.arange(Data.shape[0]*Data.shape[0])
+	MaxMinM=np.float32(MaxMinM-MaxMinM)
+	MaxMinM.shape=Data.shape[0],Data.shape[0]
+	index=0
+	# Transfer from float32 to uint8
+	Err=0
+	for FeatureTemp in Data:
+		Maximum=max(Maximum,max(FeatureTemp))
+		Minimum=min(Minimum,min(FeatureTemp))
+
+		MaxV[index]=max(FeatureTemp)
+		MinV[index]=min(FeatureTemp)
+		MaxMinM[index,index]=(max(FeatureTemp)-min(FeatureTemp))
+
+		DataTemp=(FeatureTemp-min(FeatureTemp))*255/(max(FeatureTemp)-min(FeatureTemp))
+		DataTemp=np.uint8(DataTemp)
+		Temp[index]=DataTemp.copy()
+		index+=1
+
+		Distance2origi=LA.norm(FeatureTemp)
+		DataTemp=np.float32(min(FeatureTemp)+DataTemp*(max(FeatureTemp)-min(FeatureTemp))/255)
+		Distance2center=LA.norm(FeatureTemp-DataTemp)
+		Err+=((Distance2center/Distance2origi)/Data.shape[0])
+
+
+	# Data Transpose #2
+	Data=Data.T
+
+	print('---Data Type Transformation done---')
+	print('Transformation Err are: '+str(Err)+'\n')
+	return Temp,MaxMinM,MinV
+
+def hikmean(Temp,NCluster):
+	# Implement vl_hikmeans
+	nleaves=10000
+	[tree,label]=vlfeat.vl_hikmeans(Temp,NCluster,nleaves,verb=1)	
+	#tree.save(codebookDir+'K'+str(NCluster)+'_'+str(iteration+1)+'.vlhkm')
+	center=tree.get_centers()
+	center=np.float32(center)
+	center=center.T
+	print('---Hierarchy K-Mean classify done---')
+	return tree,label,center
+
+def Load_Tree(path):
+	tree = vlfeat._vlfeat.VlHIKMTree(0, 0)
+        tree.load(path);
+	print('---Hierarchy Tree Loaded done---')
+	return tree
+
+def Err(Data,tree,label,center,MaxMinM,MinV):
+	# Err computing
+	n=0
+	Err=0		
+	while n < Data.shape[0]:
+		Distance2origi=LA.norm(Data[n])
+		centerTemp=((np.dot(center[label[0,n]-1],MaxMinM))/255)+MinV
+		Distance2center=LA.norm(Data[n]-centerTemp)
+	
+		Err+=((Distance2center/Distance2origi)/Data.shape[0])
+		n+=1
+
+	print('Err= '+str(Err))
+
+	return Err

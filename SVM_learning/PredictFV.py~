@@ -1,0 +1,92 @@
+import os
+import sys
+import time
+import numpy as np
+import hifun
+import vlfeat
+from svm import *
+from svmutil import *
+from grid import *
+import random
+from yael import ynumpy
+import scipy.io as sio
+from numpy import linalg as LA
+import subprocess
+
+# Load Initial setting
+[VectorDim,Ini_Index,PreSet,SubSample,K,listStart,listNum]=hifun.Load_Fisher_Initial()
+
+# Load FileBook
+SplitDir='/home/al-farabi/Desktop/testTrainMulti_7030_splits/'
+[filebook,pages]=hifun.Load_FileBook(SplitDir,listStart,listNum)
+
+tStart=time.time()
+FirAll=True
+for i in range(2):
+        if filebook[i][0]['Section']!=1:
+                continue
+
+        # Set Features Path
+	if PreSet==1:
+   		fvDir='/home/al-farabi/Desktop/ttsplit1/gmm_ns'+str(K)+'/fv/train/'+filebook[i][0]['Chapter']+'/'
+	elif PreSet==2:
+		fvDir='/home/al-farabi/Desktop/ttsplit1/gmm_ns'+str(K)+'/fv/testing/'+filebook[i][0]['Chapter']+'/'
+
+	Dir=os.listdir(fvDir)
+	LenDir=len(Dir)
+	Num=0
+	Fir=True
+	while Num < LenDir:
+  	     	fvTemp=np.load(fvDir+Dir[Num])
+
+		if Fir==True:
+        		fv=fvTemp.copy()
+       			Fir=False
+        	else:
+        		fv=np.vstack((fv,fvTemp))
+
+		Num+=1
+
+	ClassTemp=np.zeros(LenDir,np.int32)+i
+
+	if FirAll==True:
+		fvAll=fv.copy()
+		ClassAll=ClassTemp.copy()
+		FirAll=False
+	else:
+		fvAll=np.vstack((fvAll,fv))
+		ClassAll=np.hstack((ClassAll,ClassTemp))
+
+	
+tEnd=time.time()
+print('\nFisher vector loaded done ... Running '+str(round(tEnd-tStart,3))+'(s)\n')
+
+
+Y=np.array(ClassAll).tolist()
+X=np.array(fvAll).tolist()
+
+prob = svm_problem(Y,X)
+
+tStart=time.time()
+if PreSet==1:
+	m = svm_train(prob, '-t 0 -c 100')
+	[p_labels, p_acc, p_vals] = svm_predict(Y,X,m)
+	if os.path.exists('/home/al-farabi/Desktop/ttsplit1/gmm_ns'+str(K)+'/result')==False:
+		subprocess.call('mkdir /home/al-farabi/Desktop/ttsplit1/gmm_ns'+str(K)+'/result', shell=True)
+	svm_save_model('/home/al-farabi/Desktop/ttsplit1/gmm_ns'+str(K)+'/result/linear.model',m)
+	tEnd=time.time()
+	print('\nSVM Traning of FV done ... Running '+str(round(tEnd-tStart,3))+'(s)\n')
+elif PreSet==2:
+	m = svm_load_model('/home/al-farabi/Desktop/ttsplit1/gmm_ns'+str(K)+'/result/linear.model')
+	[p_labels, p_acc, p_vals] = svm_predict(Y,X,m)
+	'''
+	f_acc=file('/home/al-farabi/Desktop/codebook_pool/hmdb51_org/list'+str(listStart/10)+'_RBF_acc.txt','w')
+	f_acc.write(str(p_acc[0])+'\n')
+	f_acc.close()
+	'''
+	tEnd=time.time()
+	print('\nSVM Testing of FV done ... Running '+str(round(tEnd-tStart,3))+'(s)\n')
+
+
+
+
