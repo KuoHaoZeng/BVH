@@ -6,6 +6,7 @@ class Vlist:
 	videoPath = []
 	videoName = []
 	videoFolder = []
+	videoLabel = []
 	Len = []
 	def __init__(self, inlist = None):
 		if inlist != None and os.path.exists(inlist) == True:
@@ -14,20 +15,20 @@ class Vlist:
 			f.close()
 
 			for i in raw:
-				self.videoPath.append(i.replace('\n',''))
-				self.videoName.append(self.DigName(i))
-				self.videoFolder.append(i.replace(self.DigName(i) + '.avi\n',''))
-
+				self.videoPath.append(self.DigName(i, ' ', ' '))
+				self.videoName.append(self.DigName(i, '/', '.'))
+				self.videoFolder.append(self.DigName(i, ' ', '/' + self.DigName(i, '/', '.')) + '/')
+				self.videoLabel.append(int(self.DigName(i, ' ', '\n')))
 			self.Len = range(len(raw))
 			print('---Total video number---')
 			print(str(len(raw)) + '\n')
 		else:
 			raise ValueError("Wrong Input list")
 
-	def DigName(self, Path):
-		Temp = Path.split('.')
-		Temp = Temp[0].split('/')
-		return Temp[len(Temp)-1]
+	def DigName(self, Path, str1, str2):
+		Temp = Path.split(str2)
+		Temp = Temp[0].split(str1)
+		return Temp[len(Temp) - 1]
 
 # Control parameter
 class Vcont_parameter:
