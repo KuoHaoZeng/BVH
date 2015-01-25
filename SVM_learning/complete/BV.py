@@ -20,11 +20,12 @@ Control=Vcont_parameter(options)
 
 ### Features Extracting
 def featuresEX(n):
-	print List.videoFolder[n] + List.videoName[n]
         if Control.features_force == True or os.path.exists(List.videoFolder[n] + List.videoName[n]) == False:
                 Extracting(List.videoPath[n])
 p = Pool(Control.nthread)
 p.map(featuresEX, List.Len)
+if Control.features_force == 2:
+	sys.exit()
 
 ### Fisher Encoding
 # gmm training

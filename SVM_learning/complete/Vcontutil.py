@@ -4,8 +4,16 @@ from numpy import linalg as LA
 from yael import ynumpy
 from Vcont import *
 
+def SuForC(Path):
+                Re = Path.replace(';','\;')
+                Re = Re.replace('(','\(')
+                Re = Re.replace(')','\)')
+                Re = Re.replace('&','\&')
+                return Re
+
 def Extracting(fulPath):
 	# check whether .avi is existing or not
+	CPath = SuForC(fulPath)
 	if os.path.exists(fulPath) == False:
 		print('Error: ' + fulPath + ' does not exist.')
 		sys.exit()
@@ -17,8 +25,8 @@ def Extracting(fulPath):
 	# conduct
 	print(fulPath + ' Features Extracting ......')
 	tStart=time.time()
-	subprocess.call('./Video ' + fulPath, shell = True)
-	subprocess.call('./DenseTrackStab ' + fulPath, shell = True)
+	subprocess.call('./Video ' + CPath, shell = True)
+	subprocess.call('./DenseTrackStab ' + CPath, shell = True)
 	tEnd=time.time()
 	print('Cost ' + str(round(tEnd-tStart,3)) + ' sec.\n')
 
