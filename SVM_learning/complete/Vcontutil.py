@@ -11,22 +11,28 @@ def SuForC(Path):
                 Re = Re.replace('&','\&')
                 return Re
 
-def Extracting(fulPath):
+def DigName(Path, str1, str2):
+		Temp = Path.split(str2)
+		Temp = Temp[0].split(str1)
+		return Temp[len(Temp) - 1]
+
+def Extracting(fulPath, svPath):
 	# check whether .avi is existing or not
 	CPath = SuForC(fulPath)
+	video = DigName(fulPath, '/', '.')
 	if os.path.exists(fulPath) == False:
 		print('Error: ' + fulPath + ' does not exist.')
 		sys.exit()
 
 	# remove oldder verison
-	if os.path.exists(fulPath.replace('.avi', '')) == True:
-		subprocess.call('rm ' + fulPath.replace('.avi', ''), shell = True)
+	if os.path.exists(svPath + video) == True:
+		subprocess.call('rm ' + svPath + video, shell = True)
 
 	# conduct
-	print(fulPath + ' Features Extracting ......')
+	print(video + ' Features Extracting ......')
 	tStart=time.time()
 	subprocess.call('./Video ' + CPath, shell = True)
-	subprocess.call('./DenseTrackStab ' + CPath, shell = True)
+	subprocess.call('./DenseTrackStab ' + CPath + ' ' + svPath, shell = True)
 	tEnd=time.time()
 	print('Cost ' + str(round(tEnd-tStart,3)) + ' sec.\n')
 
@@ -84,7 +90,7 @@ def gmm_training(Data, K, nt=1, nit=10, redo=1):
 
 	np.savez('gmm', w = gmm[0], mu = gmm[1], std = gmm[2], pca = pca_transform, mean = mean)
 
-def fisher_vector(Data, gmm, fulPath):
+def fisher_vector(Data, gmm, fulPath): #gmm is a Gmm model class and can be seen in Vcont.py
 	# apply the PCA to the image descriptor
    	Data = np.dot(Data - gmm.mean, gmm.pca)
 	fv_mu = ynumpy.fisher(gmm.gmm, Data, include = 'mu')

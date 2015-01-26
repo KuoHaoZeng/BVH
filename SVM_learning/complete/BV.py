@@ -8,11 +8,14 @@ import os
 print
 
 ### Load input list
-List=Vlist(sys.argv[1])
+List = Vlist(sys.argv[1])
+
+### Load save path
+svPath = sys.argv[2]
 
 ### Load control parameter
 options = []
-i = 2
+i = 3
 while i < len(sys.argv):
 	options.append(sys.argv[i])
 	i += 1
@@ -20,13 +23,13 @@ Control=Vcont_parameter(options)
 
 ### Features Extracting
 def featuresEX(n):
-        if Control.features_force == True or os.path.exists(List.videoFolder[n] + List.videoName[n]) == False:
-                Extracting(List.videoPath[n])
+        if Control.features_force == True or os.path.exists(svPath + List.videoName[n]) == False:
+                Extracting(List.videoPath[n], svPath)
 p = Pool(Control.nthread)
 p.map(featuresEX, List.Len)
 if Control.features_force == 2:
 	sys.exit()
-
+sys.exit()
 ### Fisher Encoding
 # gmm training
 Features=[]
@@ -40,10 +43,13 @@ if Control.gmm_control != 0 or (os.path.exists(os.getcwd() + '/gmm.npz')) == Fal
 # fisher vector generation
 gmm=gmm_model(np.load('gmm.npz'))
 def fisherGN(n):
-        Feature = Load_Unit_Features(List.videoFolder[n] + List.videoName[n], 0)
-        fisher_vector(Feature, gmm, List.videoFolder[n] + List.videoName[n])
+	if Control.fisher_force == 1 or os.path.exists(List.videoFolder[n] + List.videoName[n] + '.npy') == False:
+      		Feature = Load_Unit_Features(List.videoFolder[n] + List.videoName[n], 0)
+        	fisher_vector(Feature, gmm, List.videoFolder[n] + List.videoName[n])
 p = Pool(Control.nthread)
 p.map(fisherGN, List.Len)
+if Control.fisher_force == 2:
+	sys.exit()
 
 ### Linear SVM
 fv=[]
