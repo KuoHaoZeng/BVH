@@ -2,7 +2,7 @@ import Vcontutil, os, subprocess, sys
 import pickle as pk
 from multiprocessing import Pool
 
-f=open('/home/Hao/Work/manual.txt','r')
+f=open('/home/al-farabi/Desktop/manual.txt','r')
 video_list = []
 inlist = []
 crop = []
@@ -22,11 +22,11 @@ for ele in sel_file:
 	b = ele[2].find('bow')
 	cmtz.append('_' + ele[2][b + 4 : a])
 '''
-folder = '/home/Hao/Work/mid/'
-#dirs = os.listdir(folder)
-output_dir = '/home/Hao/Work/mid_features_360x240'
+folder = '/home/al-farabi/Desktop/mid/'
+dirs = os.listdir(folder)
+output_dir = '/home/al-farabi/Desktop/mid_features_fix360'
 
-gmm_path = '/home/Hao/Work/fv/'
+gmm_path = '/home/al-farabi/Desktop/fv/'
 
 def ffmpeg_duration(target):
 	FFMPEG_BIN = 'ffmpeg'
@@ -80,6 +80,6 @@ def mid_gmm(List, sv_path, samp = 10, K = 256, nth = 1, nit = 30, redo = 1):
 		p.savez( sv_path + 'gmm', w = gmm[0], mu = gmm[1], std = gmm[2], pca = pca_transform, mean = mean)
 
 
-mid_gmm(inlist, gmm_path, 305, 256, 4)
-#p = Pool(3)
-#p.map(mid_features, video_list)
+#mid_gmm(inlist, gmm_path, 305, 256, 4)
+p = Pool(4)
+p.map(mid_features, video_list)
