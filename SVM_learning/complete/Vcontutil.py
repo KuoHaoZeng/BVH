@@ -1,4 +1,4 @@
-import sys, os, time, subprocess, mlpy
+import sys, os, time, subprocess, random
 import numpy as np
 from numpy import linalg as LA
 from yael import ynumpy
@@ -43,8 +43,8 @@ def Load_Unit_Features(fulPath, subsample):
 	f.close()
 	# if frameNum > subsample > 0, subsampling conduct
 	VectorDim=426
-        if subsample != 0 and FrameNum > subsample:
-		FrameNum = len(raw) / VectorDim
+        FrameNum = len(raw) / VectorDim
+	if subsample != 0 and FrameNum > subsample:
         	FrameNumVec = np.arange(FrameNum - 1)
               	RandomSap = random.sample(FrameNumVec, subsample)
                 DataTemp = np.zeros(VectorDim * subsample, dtype = np.float32)
@@ -88,7 +88,8 @@ def gmm_training(Data, K, nt=1, nit=10, redo=1):
 	# train GMM
 	gmm = ynumpy.gmm_learn(Data, K, nt, nit, 0, redo)
 
-	np.savez('gmm', w = gmm[0], mu = gmm[1], std = gmm[2], pca = pca_transform, mean = mean)
+	return gmm
+	#np.savez('gmm', w = gmm[0], mu = gmm[1], std = gmm[2], pca = pca_transform, mean = mean)
 
 def fisher_vector(Data, gmm, fulPath): #gmm is a Gmm model class and can be seen in Vcont.py
 	# apply the PCA to the image descriptor
@@ -104,7 +105,7 @@ def fisher_vector(Data, gmm, fulPath): #gmm is a Gmm model class and can be seen
 	fv /= norms
 
 	np.save(fulPath,fv)
-
+'''
 def linearSVM_T(fvAll, ClassAll, c):
 	svm = mlpy.LibLinear(solver_type='l2r_l2loss_svc', C=c)
         svm.learn(fvAll, ClassAll)
@@ -129,4 +130,4 @@ def linearSVM_P(fvAll, ClassAll):
                 if Label[i]!=ClassAll[i]:
                         error-=1
         print('Accuracy is '+str(round(100*float(error)/float(ClassAll.shape[0]),3))+'%\n')
-
+'''
