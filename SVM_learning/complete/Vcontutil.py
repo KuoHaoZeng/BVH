@@ -88,7 +88,7 @@ def gmm_training(Data, K, nt=1, nit=10, redo=1):
 	# train GMM
 	gmm = ynumpy.gmm_learn(Data, K, nt, nit, 0, redo)
 
-	return gmm
+	return gmm, pca_transform, mean
 	#np.savez('gmm', w = gmm[0], mu = gmm[1], std = gmm[2], pca = pca_transform, mean = mean)
 
 def fisher_vector(Data, gmm, fulPath): #gmm is a Gmm model class and can be seen in Vcont.py

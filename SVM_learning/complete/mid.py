@@ -1,5 +1,6 @@
 import Vcontutil, os, subprocess, sys
 import pickle as pk
+import numpy as np
 from multiprocessing import Pool
 
 f=open('/home/Hao/Work/manual.txt','r')
@@ -75,9 +76,9 @@ def mid_gmm(List, sv_path, samp = 10, K = 256, nth = 1, nit = 30, redo = 1):
                 	Features = Vcontutil.numpyVstack(Features, Feature)
 		print
 		print Features.shape
-		gmm = gmm_training(Features, K, nth, nit, redo)
+		[gmm, pca_transform, mean] = Vcontutil.gmm_training(Features, K, nth, nit, redo)
 	if gmm != 0:
-		p.savez( sv_path + 'gmm', w = gmm[0], mu = gmm[1], std = gmm[2], pca = pca_transform, mean = mean)
+		np.savez( sv_path + 'gmm', w = gmm[0], mu = gmm[1], std = gmm[2], pca = pca_transform, mean = mean)
 
 
 mid_gmm(inlist, gmm_path, 305, 256, 4)
