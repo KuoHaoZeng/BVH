@@ -1,4 +1,4 @@
-import sys, os, time, subprocess, random
+import sys, os, time, subprocess, random, mlpy
 import numpy as np
 from numpy import linalg as LA
 from yael import ynumpy
@@ -105,29 +105,29 @@ def fisher_vector(Data, gmm, fulPath): #gmm is a Gmm model class and can be seen
 	fv /= norms
 
 	np.save(fulPath,fv)
-'''
+
 def linearSVM_T(fvAll, ClassAll, c):
 	svm = mlpy.LibLinear(solver_type='l2r_l2loss_svc', C=c)
         svm.learn(fvAll, ClassAll)
-        svm.save_model('linear.model')
+        #svm.save_model('linear.model')
         Label=svm.pred(fvAll)
         error=ClassAll.shape[0]
         for i in range(ClassAll.shape[0]):
                 if Label[i]!=ClassAll[i]:
                         error-=1
-
         print('Accuracy is '+str(round(100*float(error)/float(ClassAll.shape[0]),3))+'%\n')
+	return svm
 
-def linearSVM_P(fvAll, ClassAll):
+def linearSVM_P(fvAll, ClassAll, svm):
 	# check whether SVM model is existing or not
-        if os.path.exists('linear.model') == False:
-                print('Error: SVM model does not exist.')
-                sys.exit()
-	svm = svm.load_model('linear.model')
+        #if os.path.exists('linear.model') == False:
+        #        print('Error: SVM model does not exist.')
+        #        sys.exit()
+	#svm = svm.load_model('linear.model')
         Label = svm.pred(fvAll)
         error=ClassAll.shape[0]
         for i in range(ClassAll.shape[0]):
                 if Label[i]!=ClassAll[i]:
                         error-=1
         print('Accuracy is '+str(round(100*float(error)/float(ClassAll.shape[0]),3))+'%\n')
-'''
+	return round(100*float(error)/float(ClassAll.shape[0]),3)
