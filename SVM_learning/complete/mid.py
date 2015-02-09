@@ -3,18 +3,20 @@ import pickle as pk
 import numpy as np
 from multiprocessing import Pool
 
-f=open('/home/Hao/Work/manual.txt','r')
+#f = open('/home/al-farabi/Desktop/manual.txt', 'r')
+f = open('/home/al-farabi/Desktop/hmdb_list.txt', 'r')
 video_list = []
 inlist = []
 crop = []
 for line in f:
-	temp = line[0 : len(line) - 1]
+        temp = line[0 : len(line) - 1]
 	video_list.append(temp)
-	xx = temp.split(' ')
-	inlist.append(xx[0])
-	if len(xx)>3 and '*' in xx[3]:
-		crop.append(xx[0])
+	#xx = temp.split(' ')
+	#inlist.append(xx[0])
+	#if len(xx)>3 and '*' in xx[3]:
+	#	crop.append(xx[0])
 
+'''
 file_path = '/home/Hao/Work/viral_data/mid_cmts/bow/sel/selK5_T5.pkl'
 sel_file = pk.load(open(file_path,'r'))
 cmtz = []
@@ -22,12 +24,13 @@ for ele in sel_file:
 	a = ele[2].find('all')
 	b = ele[2].find('bow')
 	cmtz.append('_' + ele[2][b + 4 : a])
-
-folder = '/home/Hao/Work/mid/'
+'''
+#folder = '/home/al-farabi/Desktop/mid/'
 #dirs = os.listdir(folder)
-output_dir = '/home/Hao/Work/mid_features_360x240'
+output_dir = '/home/al-farabi/Desktop/hmdb_features_fix360'
 
-gmm_path = '/home/Hao/Work/fv/' # also a postive case path
+gmm_path = '/home/al-farabi/Desktop/nfv/' # also a postive case path
+'''
 neg_tr_path = '/home/Hao/Work/nfv/train/'
 neg_tr_list = os.listdir(neg_tr_path)
 neg_tr_label = [0] * len(neg_tr_list)
@@ -42,7 +45,7 @@ cluster = cluster_temp.split('\n')
 
 traing_set_path = '/home/Hao/Work/traing_set/'
 cla_path = '/home/Hao/Work/cla/'
-
+'''
 def ffmpeg_duration(target):
 	FFMPEG_BIN = 'ffmpeg'
 	command = [FFMPEG_BIN,'-i', target, '-']
@@ -77,12 +80,25 @@ def video_edit(text):
 def mid_features(text, f = None):
 	temp = text.split(' ')
         ele = temp[0]
-        target = folder + ele + '/' + ele + '.mp4'
+        #target = folder + ele + '/' + ele + '.avi'
+	target = ele + '.avi'
 	Vcontutil.Extracting(target, output_dir)
+
+def check_features_size(List, samp = 0):
+        Features = []
+        for ele in List:
+            #Feature = Vcontutil.Load_Unit_Features(output_dir + '/' + ele, samp)
+            Feature = Vcontutil.Load_Unit_Features(ele, samp)
+            Features = Vcontutil.numpyVstack(Features, Feature)
+        return Features.shape
+
+#shape = check_features_size(video_list)
+#print shape
+#sys.exit()
 
 def mid_gmm(List, sv_path, samp = 10, K = 256, nth = 1, nit = 30, redo = 1):
 	# gmm training
-	Features=[]
+	Features = []
 	gmm = 0
 	if not (os.path.exists(sv_path + '/gmm.npz')):
         	for ele in List:
@@ -95,10 +111,12 @@ def mid_gmm(List, sv_path, samp = 10, K = 256, nth = 1, nit = 30, redo = 1):
 		np.savez( sv_path + 'gmm', w = gmm[0], mu = gmm[1], std = gmm[2], pca = pca_transform, mean = mean)
 
 def fisherGN(ele):
-	gmm = Vcont.gmm_model(np.load(gmm_path + '/gmm.npz'))
         if not os.path.exists(gmm_path + '/' + ele + '.npy'):
+                gmm = Vcont.gmm_model(np.load(gmm_path + '/gmm.npz'))
                 Feature = Vcontutil.Load_Unit_Features(output_dir + '/' + ele, 0)
                 Vcontutil.fisher_vector(Feature, gmm, gmm_path + '/' + ele)
+        else:
+                print ele + '.npy already exist!'
 
 def linear_SVM(group, videoLabel, fv_neg, C = 100):
 	fv=[]
@@ -142,7 +160,7 @@ def convert_index2name(clu):
 		name.append(cmtz[int(ele)] + '.npy')
 		Label.append(1)
 	return name, Label
-
+'''
 fv_tr_neg = np.load('/home/Hao/Work/neg_tr_fv.npy')
 fv_te_neg = np.load('/home/Hao/Work/neg_te_fv.npy')
 
@@ -197,15 +215,18 @@ def cross_validation(cluster):
 	else:
 		return
 	print 'Time cost: ' + str(round(time.time() - sTime, 3)) + 'second'
+'''
+
 #linear_SVM()
 #get_group()
 #f_acc = open('/home/Hao/Work/acc.txt','w')
-p = Pool(4)
-p.map(cross_validation, clu_group)
+#p = Pool(4)
+#p.map(cross_validation, clu_group)
 #cross_validation(clu_group[0])
 
-#p = Pool(4)
-#p.map(mid_features, video_list)
+p = Pool(4)
+p.map(mid_features, video_list)
 #mid_gmm(inlist, gmm_path, 305, 256, 4)
+#fisherGN(inlist[243])
 #p = Pool(4)
 #p.map(fisherGN, inlist)

@@ -27,7 +27,6 @@ def Extracting(fulPath, svPath):
 	# remove oldder verison
 	if os.path.exists(svPath + video) == True:
 		subprocess.call('rm ' + svPath + video, shell = True)
-
 	# conduct
 	print(video + ' Features Extracting ......')
 	tStart=time.time()
@@ -53,7 +52,6 @@ def Load_Unit_Features(fulPath, subsample):
         		DataTemp[xx * VectorDim : (xx + 1) * VectorDim] = raw[j * VectorDim : (j + 1) * VectorDim].copy()
                 	xx += 1
         	raw = DataTemp.copy()
-
 	Data = raw.copy()
 	Data.shape = -1, VectorDim
 		
