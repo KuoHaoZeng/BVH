@@ -98,10 +98,12 @@ def check_features_size(List, samp = 0):
 
 def get_features(List, samp):
         Features = []
+        Feature = []
         for ele in List:
             #Feature = Vcontutil.Load_Unit_Features(output_dir + '/' + ele, samp)
             Feature = Vcontutil.Load_Unit_Features(ele, samp)
             Features = Vcontutil.numpyVstack(Features, Feature)
+            Feature = []
         return Features
 
 def mid_gmm(Features, sv_path, K = 256, nth = 1, nit = 30, redo = 1):
@@ -125,10 +127,11 @@ def fisherGN(ele):
         if not os.path.exists(gmm_path + '/' + name + '.npy'):
                 #gmm = Vcont.gmm_model(np.load(gmm_path + '/gmm.npz'))
                 #Feature = Vcontutil.Load_Unit_Features(output_dir + '/' + ele, 0)
+                print name + ' go go !!'
                 Feature = Vcontutil.Load_Unit_Features(ele, 0)
                 Vcontutil.fisher_vector(Feature, gmm, gmm_path + '/' + name)
         else:
-                print ele + '.npy already exist!'
+                print name + '.npy already exist!'
 
 def linear_SVM(group, videoLabel, fv_neg, C = 100):
 	fv=[]
@@ -229,6 +232,7 @@ def cross_validation(cluster):
 	print 'Time cost: ' + str(round(time.time() - sTime, 3)) + 'second'
 '''
 
+### Linear SVM learning
 #linear_SVM()
 #get_group()
 #f_acc = open('/home/Hao/Work/acc.txt','w')
@@ -236,25 +240,39 @@ def cross_validation(cluster):
 #p.map(cross_validation, clu_group)
 #cross_validation(clu_group[0])
 
+### Dense Trajectory Feature Extrating
 #p = Pool(4)
 #p.map(mid_features, video_list)
 
-#gmm = Vcont.gmm_model(np.load('/home/al-farabi/Desktop/fv/gmm.npz'))
+
+### Gmm model training
 f = open('/home/al-farabi/Desktop/hmdb_list.txt', 'r')
-#gmm_path = '/home/al-farabi/Desktop/nfv/'
 video_list = get_video_list(f, video_list)
-#fisherGN(video_list[0])
-Features = get_features(video_list, 38)
+Features = get_features(video_list[:], 38)
 print Features.shape
-#p = Pool(4)
-#p.map(fisherGN, video_list)
 f = open('/home/al-farabi/Desktop/mid_list.txt', 'r')
-#gmm_path = '/home/al-farabi/Desktop/fv/'
-#video_list = []
-#video_list = get_video_list(f, video_list)
-Features = Vcontutil.numpyVstack(Features, get_features(video_list, 913))
+video_list = []
+video_list = get_video_list(f, video_list)
+Features = Vcontutil.numpyVstack(Features, get_features(video_list[:], 913))
 print Features.shape
 mid_gmm(Features, gmm_path, 256, 4)
-#fisherGN(video_names[243])
+
+'''
+### Fisher Vector encoding
+gmm = Vcont.gmm_model(np.load('/home/al-farabi/Desktop/fv/gmm.npz'))
+f = open('/home/al-farabi/Desktop/hmdb_list.txt', 'r')
+gmm_path = '/home/al-farabi/Desktop/nfv/'
+video_list = get_video_list(f, video_list)
+p = Pool(4)
+p.map(fisherGN, video_list)
+
+gmm = Vcont.gmm_model(np.load('/home/al-farabi/Desktop/fv/gmm.npz'))
+f = open('/home/al-farabi/Desktop/mid_list.txt', 'r')
+gmm_path = '/home/al-farabi/Desktop/nfv/'
+video_list = []
+video_list = get_video_list(f, video_list)
+for qq in video_list:
+    fisherGN(qq)
 #p = Pool(4)
 #p.map(fisherGN, video_list)
+'''
