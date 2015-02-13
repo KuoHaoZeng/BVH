@@ -3,8 +3,6 @@ import pickle as pk
 import numpy as np
 from multiprocessing import Pool
 
-#f = open('/home/al-farabi/Desktop/mid_list.txt', 'r')
-#f = open('/home/al-farabi/Desktop/hmdb_list.txt', 'r')
 video_list = []
 video_names = []
 crop = []
@@ -17,37 +15,21 @@ def get_video_list(f, video_list):
 	        #video_names.append(xx[len(xx) - 1])
         return video_list
 
-'''
-file_path = '/home/Hao/Work/viral_data/mid_cmts/bow/sel/selK5_T5.pkl'
-sel_file = pk.load(open(file_path,'r'))
-cmtz = []
-for ele in sel_file:
-	a = ele[2].find('all')
-	b = ele[2].find('bow')
-	cmtz.append('_' + ele[2][b + 4 : a])
-'''
+def get_cmtz(sel_file):
+	cmtz = []
+	for ele in sel_file:
+		a = ele[2].find('all')
+		b = ele[2].find('bow')
+		cmtz.append('_' + ele[2][b + 4 : a])
+	return cmtz
+
 #folder = '/home/al-farabi/Desktop/mid/'
 #dirs = os.listdir(folder)
 #output_dir = '/home/al-farabi/Desktop/hmdb_features_fix360'
-output_dir = '/home/al-farabi/Desktop/mid_features_fix360'
+#output_dir = '/home/al-farabi/Desktop/mid_features_fix360'
 
-gmm_path = '/home/al-farabi/Desktop/fv/' # also a postive case path
-'''
-neg_tr_path = '/home/Hao/Work/nfv/train/'
-neg_tr_list = os.listdir(neg_tr_path)
-neg_tr_label = [0] * len(neg_tr_list)
-neg_te_path = '/home/Hao/Work/nfv/testing/'
-neg_te_list = os.listdir(neg_te_path)
-neg_te_label = [0] * len(neg_te_list)
+#gmm_path = '/home/al-farabi/Desktop/fv/' # also a postive case path
 
-clu_path = '/home/Hao/Work/Cmts/cmt_clu2.txt'
-clu_file = open(clu_path, 'r')
-cluster_temp = clu_file.read()
-cluster = cluster_temp.split('\n')
-
-traing_set_path = '/home/Hao/Work/traing_set/'
-cla_path = '/home/Hao/Work/cla/'
-'''
 def ffmpeg_duration(target):
 	FFMPEG_BIN = 'ffmpeg'
 	command = [FFMPEG_BIN,'-i', target, '-']
@@ -133,31 +115,16 @@ def fisherGN(ele):
         else:
                 print name + '.npy already exist!'
 
-def linear_SVM(group, videoLabel, fv_neg, C = 100):
-	fv=[]
-	for n in group:
-        	fvTemp = np.load(traing_set_path + n)
-        	fv = Vcontutil.numpyVstack(fv, fvTemp)
-		print n +' loading ...'
-	fv = Vcontutil.numpyVstack(fv, fv_neg)
-	Label = np.array(videoLabel)
+def linear_SVM(fv, Label, C = 100):
         svm = Vcontutil.linearSVM_T(fv, Label, C)
         return svm
-	#linearSVM_P(fv, Label)
 
-def linear_pred(group, videoLabel, fv_neg, svm):
-        fv=[]
-        for n in group:
-                fvTemp = np.load(traing_set_path + n)
-                fv = Vcontutil.numpyVstack(fv, fvTemp)
-                print n +' loading ...'
-        fv = Vcontutil.numpyVstack(fv, fv_neg)
-        Label = np.array(videoLabel)
+def linear_pred(fv, Label, svm):
         acc = Vcontutil.linearSVM_P(fv, Label, svm)
 	return acc
 
 def get_group(clu):
-	group = clu[:]
+	group = map(int, clu)
 	random.shuffle(group)
 	n = len(group) / 5
 	A = group[0 : n]
@@ -168,27 +135,36 @@ def get_group(clu):
 	clustering = [A, B, C, D, E]
 	return clustering
 
-def convert_index2name(clu):
-	name = []
-	Label = []
-	for ele in clu:
-		name.append(cmtz[int(ele)] + '.npy')
-		Label.append(1)
-	return name, Label
-'''
-fv_tr_neg = np.load('/home/Hao/Work/neg_tr_fv.npy')
-fv_te_neg = np.load('/home/Hao/Work/neg_te_fv.npy')
+def convert_index2fv(clu, fv_all):
+	temp = np.arange(fv_all.shape[0])
+	temp = np.delete(temp, clu)
+	fv = np.delete(fv_all, temp, 0)
+	return fv
 
-name = []
-clu_group = []
-for ele in cluster:
-        temp = ele.split(' ')[0]
-        if temp[len(temp) - 3 : len(temp)] == 'bow':
-                a = temp.find('all')
-                name.append('_' + temp[0 : a])
-                if not os.path.exists(cla_path + name[len(name) - 1]):
-                        subprocess.call('mkdir ' + cla_path + name[len(name) - 1], shell = True)
-        clu_group.append(ele.split(' ')[0 : len(ele.split(' ')) - 1])
+#fv_tr_neg = np.load('/home/Hao/Work/neg_tr_fv.npy')
+#fv_te_neg = np.load('/home/Hao/Work/neg_te_fv.npy')
+
+def get_clu(cluster, cla_path):
+	name = []
+	clu_group = []
+	for ele in cluster:
+		temp = ele.split(' ')[0]
+		if temp[len(temp) - 3 : len(temp)] == 'bow':
+			a = temp.find('all')
+			name.append('_' + temp[0 : a])
+			if not os.path.exists(cla_path + name[len(name) - 1]):
+				subprocess.call('mkdir ' + cla_path + name[len(name) - 1], shell = True)
+		clu_group.append(ele.split(' ')[0 : len(ele.split(' ')) - 1])
+	return clu_group
+
+def get_total_fv(List):
+	fv = []
+        for n in List:
+                fvTemp = np.load(n)
+                fv = Vcontutil.numpyVstack(fv, fvTemp)
+                print n + ' loading ......'
+        np.save('/home/Hao/Work/mid_total_fv', fv)
+	return fv
 
 def cross_validation(cluster):
 	#fv_tr_neg = []
@@ -203,36 +179,79 @@ def cross_validation(cluster):
 	#fv_te_neg = np.load('/home/Hao/Work/neg_te_fv.npy')
 	sTime = time.time()
 	if len(cluster) != 0:
-		name = cluster[0]
+		a = cluster[0].find('all')
+                name = '_' + cluster[0][0 : a]
+		#f = open(cla_path + name + '/' + name + str(len(cluster)) + '.txt', 'w')
 		clustering = get_group(cluster[1 : len(cluster)])	
+		clustering_neg = get_group(range(fv_hmdb.shape[0]))
 		accuracy = []
 		svm = []
 		for i in range(5):
 			clu = []
+			clu_neg = []
 			for j in range(5):
 				if j == i:
 					continue
 				clu += clustering[j]
-			[clu, clu_label] = convert_index2name(clu)
-			clu_label += neg_tr_label
-			svm.append(linear_SVM(clu, clu_label, fv_tr_neg))
+				clu_neg += clustering_neg[j]
+			fv_pos = convert_index2fv(clu, fv_mid)
+			label_pos = np.ones(fv_pos.shape[0])
+			fv_neg = convert_index2fv(clu_neg, fv_hmdb)
+			label_neg = np.zeros(fv_neg.shape[0])
+			fv = Vcontutil.numpyVstack(fv_pos, fv_neg)
+			label = Vcontutil.numpyHstack(label_pos, label_neg)
+			#svm.append(linear_SVM(fv, label))
 
-			[clu, clu_label] = convert_index2name(clustering[i])
-			clu_label += neg_te_label
-			acc = linear_pred(clu, clu_label, fv_te_neg, svm[i])
-			accuracy.append(acc)
-		acc_avg = float(sum(accuracy)) / len(accuracy)
-		print accuracy
-		print 'cross-validation accuracy: ' + str(acc_avg)
-		index = accuracy.index(max(accuracy))
-		svm[index].save_model(cla_path + name + '/' + name + cluster[len(cluster) - 1] + '.model')
+                        fv_pos = convert_index2fv(clustering[j], fv_mid)
+			label_pos = np.ones(fv_pos.shape[0])
+                        fv_neg = convert_index2fv(clustering_neg[j], fv_hmdb)
+                        label_neg = np.zeros(fv_neg.shape[0])
+			fv = Vcontutil.numpyVstack(fv_pos, fv_neg)
+                        label = Vcontutil.numpyHstack(label_pos, label_neg)
+			#acc = linear_pred(fv, label, svm[i])
+			#accuracy.append(acc)
+		#acc_avg = float(sum(accuracy)) / len(accuracy)
+		#print accuracy
+		#print 'cross-validation accuracy: ' + str(acc_avg)
+		#index = accuracy.index(max(accuracy))
+		#svm[index].save_model(cla_path + name + '/' + name + cluster[len(cluster) - 1] + '.model')
 		#f.write(name + ': ' + str(acc_avg) + ' ' + str(max(accuracy)) + '\n')
+		#f.close()
 	else:
 		return
 	print 'Time cost: ' + str(round(time.time() - sTime, 3)) + 'second'
-'''
+
 
 ### Linear SVM learning
+## Get mid file sort
+file_path = '/home/Hao/Work/viral_data/mid_cmts/bow/sel/selK5_T5.pkl'
+sel_file = pk.load(open(file_path,'r'))
+cmtz = get_cmtz(sel_file)
+
+## Load Cluster by seeds seletion
+clu_path = '/home/Hao/Work/Cmts/cmt_clu2.txt'
+clu_file = open(clu_path, 'r')
+cluster_temp = clu_file.read()
+cluster = cluster_temp.split('\n')
+
+## Initial path setting
+traing_set_path = '/home/Hao/Work/traing_set/'
+cla_path = '/home/Hao/Work/cla/'
+
+## Get Cluster Group
+clu_group = get_clu(cluster, cla_path)
+
+## Load prepared fv
+fv_mid = np.load('/home/Hao/Work/mid_total_fv.npy')
+fv_hmdb = np.load('/home/Hao/Work/hmdb_total_fv.npy')
+
+#cross_validation(clu_group[0])
+#p = Pool(2)
+#p.map(cross_validation, clu_group[0:4])
+
+#f = open('/home/Hao/Work/mid_list.txt', 'r')
+#video_list = get_video_list(f, video_list)
+#fv = get_total_fv(video_list)
 #linear_SVM()
 #get_group()
 #f_acc = open('/home/Hao/Work/acc.txt','w')
@@ -244,7 +263,7 @@ def cross_validation(cluster):
 #p = Pool(4)
 #p.map(mid_features, video_list)
 
-
+'''
 ### Gmm model training
 f = open('/home/al-farabi/Desktop/hmdb_list.txt', 'r')
 video_list = get_video_list(f, video_list)
@@ -256,6 +275,7 @@ video_list = get_video_list(f, video_list)
 Features = Vcontutil.numpyVstack(Features, get_features(video_list[:], 913))
 print Features.shape
 mid_gmm(Features, gmm_path, 256, 4)
+'''
 
 '''
 ### Fisher Vector encoding

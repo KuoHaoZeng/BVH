@@ -67,6 +67,14 @@ def numpyVstack(vA, vB):
 		vA = np.vstack((vA, vB))
 
 	return vA
+
+def numpyHstack(vA, vB):
+        if vA == []:
+                vA = vB.copy()
+        else:
+                vA = np.hstack((vA, vB))
+
+        return vA
 		
 def gmm_training(Data, K, nt=1, nit=10, redo=1):
 	# compute mean and covariance matrix for the PCA
