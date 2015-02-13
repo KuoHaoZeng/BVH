@@ -15,6 +15,16 @@ def get_video_list(f, video_list):
 	        #video_names.append(xx[len(xx) - 1])
         return video_list
 
+def get_hmdb_list(video_list):
+        label = []
+        names = []
+        for ele in video_list:
+                label.append(int(ele.split(' ')[1]))
+                temp = ele.split(' ')[0].split('/')
+                names.append('/home/al-farabi/Desktop/fv_2_12/' + temp[len(temp) - 1].split('.')[0] + '.npy')
+        label = np.array(label)
+        return names, label
+
 def get_cmtz(sel_file):
 	cmtz = []
 	for ele in sel_file:
@@ -163,7 +173,7 @@ def get_total_fv(List):
                 fvTemp = np.load(n)
                 fv = Vcontutil.numpyVstack(fv, fvTemp)
                 print n + ' loading ......'
-        np.save('/home/Hao/Work/mid_total_fv', fv)
+        np.save('/home/al-farabi/Desktop/hmdb_dataset_fv_tes', fv)
 	return fv
 
 def cross_validation(cluster):
@@ -221,7 +231,26 @@ def cross_validation(cluster):
 		return
 	print 'Time cost: ' + str(round(time.time() - sTime, 3)) + 'second'
 
+'''
+### Test for hmdb dataset
+hmdb_list_path = '/home/al-farabi/Desktop/inList_tt1T.txt'
+f = open(hmdb_list_path, 'r')
+video_list = f.read()
+video_list = video_list.split('\n')
+[video_list, video_label] = get_hmdb_list(video_list[0 : len(video_list) - 1])
+fv_tra = np.load('/home/al-farabi/Desktop/hmdb_dataset_fv_tra.npy')
+svm = linear_SVM(fv_tra, video_label)
 
+hmdb_list_path = '/home/al-farabi/Desktop/inList_tt1P.txt'
+f = open(hmdb_list_path, 'r')
+video_list = f.read()
+video_list = video_list.split('\n')
+[video_list, video_label] = get_hmdb_list(video_list[0 : len(video_list) - 1])
+fv_tes = np.load('/home/al-farabi/Desktop/hmdb_dataset_fv_tes.npy')
+acc = linear_pred(fv_tes, video_label, svm)
+print acc
+'''
+'''
 ### Linear SVM learning
 ## Get mid file sort
 file_path = '/home/Hao/Work/viral_data/mid_cmts/bow/sel/selK5_T5.pkl'
@@ -262,7 +291,7 @@ fv_hmdb = np.load('/home/Hao/Work/hmdb_total_fv.npy')
 ### Dense Trajectory Feature Extrating
 #p = Pool(4)
 #p.map(mid_features, video_list)
-
+'''
 '''
 ### Gmm model training
 f = open('/home/al-farabi/Desktop/hmdb_list.txt', 'r')
