@@ -291,15 +291,15 @@ traing_set_path = '/home/Hao/Work/traing_set/'
 cla_path = '/home/Hao/Work/cla/'
 
 ## Get Cluster Group
-clu_group = get_clu(cluster, cla_path)
+clu_group = get_clu(cluster[770 : len(cluster) - 2], cla_path)
 
 ## Load prepared fv
 fv_mid = np.load('/home/Hao/Work/mid_total_fv.npy')
 fv_hmdb = np.load('/home/Hao/Work/hmdb_total_fv.npy')
 
-cross_validation(clu_group[0])
-#p = Pool(2)
-#p.map(cross_validation, clu_group[0:4])
+#cross_validation(clu_group[0])
+p = Pool(3)
+p.map(cross_validation, clu_group)
 
 #f = open('/home/Hao/Work/mid_list.txt', 'r')
 #video_list = get_video_list(f, video_list)
