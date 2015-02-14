@@ -130,7 +130,27 @@ def linear_SVM(fv, Label, C = 100):
         return svm
 
 def linear_pred(fv, Label, svm):
-        acc = Vcontutil.linearSVM_P(fv, Label, svm)
+        w = svm.w()
+	b = svm.bias()
+	y = np.dot(fv, w) + b
+	error_pos = 0
+	num_pos = 0
+	error_neg = 0
+	for i in range(y.shape[0]):
+		if Label[i] > 0:
+			num_pos += 1
+			if y[i] < 0:
+				error_pos += 1
+		else:
+			if y[i] > 0:
+				error_neg += 1
+	acc_pos = 1 - float(error_pos) / num_pos
+	acc_neg = 1 - float(error_neg) / (y.shape[0] - num_pos)
+	acc = (acc_pos + acc_neg) / 2
+	print 'average accuracy: ' + str(acc)
+	print 'positive accuracy: ' + str(acc_pos)
+	print 'negative accuracy: ' + str(acc_neg)
+	#acc = Vcontutil.linearSVM_P(fv, Label, svm)
 	return acc
 
 def get_group(clu):
@@ -191,10 +211,9 @@ def cross_validation(cluster):
 	if len(cluster) != 0:
 		a = cluster[0].find('all')
                 name = '_' + cluster[0][0 : a]
-		#f = open(cla_path + name + '/' + name + str(len(cluster)) + '.txt', 'w')
+		f = open(cla_path + name + '/' + name + str(len(cluster)) + '.txt', 'w')
 		clustering = get_group(cluster[1 : len(cluster)])	
 		clustering_neg = get_group(range(fv_hmdb.shape[0]))
-		accuracy = []
 		svm = []
 		for i in range(5):
 			clu = []
@@ -210,23 +229,26 @@ def cross_validation(cluster):
 			label_neg = np.zeros(fv_neg.shape[0])
 			fv = Vcontutil.numpyVstack(fv_pos, fv_neg)
 			label = Vcontutil.numpyHstack(label_pos, label_neg)
-			#svm.append(linear_SVM(fv, label))
+			svm.append(linear_SVM(fv, label))
 
-                        fv_pos = convert_index2fv(clustering[j], fv_mid)
+                        fv_pos = convert_index2fv(clustering[i], fv_mid)
 			label_pos = np.ones(fv_pos.shape[0])
-                        fv_neg = convert_index2fv(clustering_neg[j], fv_hmdb)
+                        fv_neg = convert_index2fv(clustering_neg[i], fv_hmdb)
                         label_neg = np.zeros(fv_neg.shape[0])
 			fv = Vcontutil.numpyVstack(fv_pos, fv_neg)
                         label = Vcontutil.numpyHstack(label_pos, label_neg)
-			#acc = linear_pred(fv, label, svm[i])
-			#accuracy.append(acc)
-		#acc_avg = float(sum(accuracy)) / len(accuracy)
-		#print accuracy
-		#print 'cross-validation accuracy: ' + str(acc_avg)
-		#index = accuracy.index(max(accuracy))
-		#svm[index].save_model(cla_path + name + '/' + name + cluster[len(cluster) - 1] + '.model')
-		#f.write(name + ': ' + str(acc_avg) + ' ' + str(max(accuracy)) + '\n')
-		#f.close()
+			acc = linear_pred(fv, label, svm[i])
+			if i == 0:
+				accuracy = np.array(acc)
+			else:
+				accuracy = Vcontutil.numpyVstack(accuracy, acc)
+		acc_avg = float(sum(accuracy[:, 0])) / accuracy.shape[0]
+		print accuracy
+		print 'cross-validation accuracy: ' + str(acc_avg)
+		index = np.where(accuracy == max(accuracy[:, 0]))[0][0]
+		svm[index].save_model(cla_path + name + '/' + name + cluster[len(cluster) - 1] + '.model')
+		f.write(name + ': ' + str(acc_avg) + ' ' + str(accuracy[index][0]) + ' ' + str(accuracy[index][1]) + ' ' + accuracy[index][2] + '\n')
+		f.close()
 	else:
 		return
 	print 'Time cost: ' + str(round(time.time() - sTime, 3)) + 'second'
@@ -250,7 +272,7 @@ fv_tes = np.load('/home/al-farabi/Desktop/hmdb_dataset_fv_tes.npy')
 acc = linear_pred(fv_tes, video_label, svm)
 print acc
 '''
-'''
+
 ### Linear SVM learning
 ## Get mid file sort
 file_path = '/home/Hao/Work/viral_data/mid_cmts/bow/sel/selK5_T5.pkl'
@@ -260,6 +282,7 @@ cmtz = get_cmtz(sel_file)
 ## Load Cluster by seeds seletion
 clu_path = '/home/Hao/Work/Cmts/cmt_clu2.txt'
 clu_file = open(clu_path, 'r')
+a_path = '/home/Hao/Work/cla/'
 cluster_temp = clu_file.read()
 cluster = cluster_temp.split('\n')
 
@@ -274,7 +297,7 @@ clu_group = get_clu(cluster, cla_path)
 fv_mid = np.load('/home/Hao/Work/mid_total_fv.npy')
 fv_hmdb = np.load('/home/Hao/Work/hmdb_total_fv.npy')
 
-#cross_validation(clu_group[0])
+cross_validation(clu_group[0])
 #p = Pool(2)
 #p.map(cross_validation, clu_group[0:4])
 
@@ -291,7 +314,7 @@ fv_hmdb = np.load('/home/Hao/Work/hmdb_total_fv.npy')
 ### Dense Trajectory Feature Extrating
 #p = Pool(4)
 #p.map(mid_features, video_list)
-'''
+
 '''
 ### Gmm model training
 f = open('/home/al-farabi/Desktop/hmdb_list.txt', 'r')
