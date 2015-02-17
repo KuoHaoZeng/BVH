@@ -121,7 +121,7 @@ def linearSVM_T(fvAll, ClassAll, c):
         for i in range(ClassAll.shape[0]):
                 if Label[i]!=ClassAll[i]:
                         error-=1
-        print('Accuracy is '+str(round(100*float(error)/float(ClassAll.shape[0]),3))+'%\n')
+        print('Learning accuracy is '+str(round(100*float(error)/float(ClassAll.shape[0]),3))+'%')
 	return svm
 
 def linearSVM_P(fvAll, ClassAll, svm):

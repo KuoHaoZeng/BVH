@@ -151,7 +151,7 @@ def linear_pred(fv, Label, svm):
 	print 'positive accuracy: ' + str(acc_pos)
 	print 'negative accuracy: ' + str(acc_neg)
 	#acc = Vcontutil.linearSVM_P(fv, Label, svm)
-	return acc
+	return acc, acc_pos, acc_neg
 
 def get_group(clu):
 	group = map(int, clu)
@@ -211,7 +211,6 @@ def cross_validation(cluster):
 	if len(cluster) != 0:
 		a = cluster[0].find('all')
                 name = '_' + cluster[0][0 : a]
-		f = open(cla_path + name + '/' + name + str(len(cluster)) + '.txt', 'w')
 		clustering = get_group(cluster[1 : len(cluster)])	
 		clustering_neg = get_group(range(fv_hmdb.shape[0]))
 		svm = []
@@ -243,12 +242,10 @@ def cross_validation(cluster):
 			else:
 				accuracy = Vcontutil.numpyVstack(accuracy, acc)
 		acc_avg = float(sum(accuracy[:, 0])) / accuracy.shape[0]
-		print accuracy
 		print 'cross-validation accuracy: ' + str(acc_avg)
 		index = np.where(accuracy == max(accuracy[:, 0]))[0][0]
-		svm[index].save_model(cla_path + name + '/' + name + cluster[len(cluster) - 1] + '.model')
-		f.write(name + ': ' + str(acc_avg) + ' ' + str(accuracy[index][0]) + ' ' + str(accuracy[index][1]) + ' ' + accuracy[index][2] + '\n')
-		f.close()
+		svm[index].save_model(cla_path + name + '/' + name + '_' + str(len(cluster)) + '.model')
+		np.save(cla_path + name + '/' + name + '_' + str(len(cluster)) + '_accuracy', accuracy)
 	else:
 		return
 	print 'Time cost: ' + str(round(time.time() - sTime, 3)) + 'second'
@@ -272,7 +269,14 @@ fv_tes = np.load('/home/al-farabi/Desktop/hmdb_dataset_fv_tes.npy')
 acc = linear_pred(fv_tes, video_label, svm)
 print acc
 '''
-
+'''
+### Reduce hmdbdata dimension
+fv_hmdb = np.load('/home/Hao/Work/hmdb_total_fv.npy')
+saved = np.load('/home/Hao/Work/Cmts/hmdb_seeds.npy')
+fv_hmdb = convert_index2fv(saved, fv_hmdb)
+np.save('/home/Hao/Work/hmdb_half_fv', fv_hmdb)
+sys.exit()
+'''
 ### Linear SVM learning
 ## Get mid file sort
 file_path = '/home/Hao/Work/viral_data/mid_cmts/bow/sel/selK5_T5.pkl'
@@ -282,7 +286,6 @@ cmtz = get_cmtz(sel_file)
 ## Load Cluster by seeds seletion
 clu_path = '/home/Hao/Work/Cmts/cmt_clu2.txt'
 clu_file = open(clu_path, 'r')
-a_path = '/home/Hao/Work/cla/'
 cluster_temp = clu_file.read()
 cluster = cluster_temp.split('\n')
 
@@ -295,11 +298,11 @@ clu_group = get_clu(cluster[770 : len(cluster) - 2], cla_path)
 
 ## Load prepared fv
 fv_mid = np.load('/home/Hao/Work/mid_total_fv.npy')
-fv_hmdb = np.load('/home/Hao/Work/hmdb_total_fv.npy')
+fv_hmdb = np.load('/home/Hao/Work/hmdb_half_fv.npy')
 
-#cross_validation(clu_group[0])
-p = Pool(3)
-p.map(cross_validation, clu_group)
+cross_validation(clu_group[0])
+#p = Pool(2)
+#p.map(cross_validation, clu_group[0 : 4])
 
 #f = open('/home/Hao/Work/mid_list.txt', 'r')
 #video_list = get_video_list(f, video_list)
