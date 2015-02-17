@@ -211,6 +211,7 @@ def cross_validation(cluster):
 	if len(cluster) != 0:
 		a = cluster[0].find('all')
                 name = '_' + cluster[0][0 : a]
+		print '\n####### ' + name + ' #######'
 		clustering = get_group(cluster[1 : len(cluster)])	
 		clustering_neg = get_group(range(fv_hmdb.shape[0]))
 		svm = []
@@ -300,9 +301,9 @@ clu_group = get_clu(cluster[770 : len(cluster) - 2], cla_path)
 fv_mid = np.load('/home/Hao/Work/mid_total_fv.npy')
 fv_hmdb = np.load('/home/Hao/Work/hmdb_half_fv.npy')
 
-cross_validation(clu_group[0])
-#p = Pool(2)
-#p.map(cross_validation, clu_group[0 : 4])
+#cross_validation(clu_group[1])
+p = Pool(2)
+p.map(cross_validation, clu_group[0 : 4])
 
 #f = open('/home/Hao/Work/mid_list.txt', 'r')
 #video_list = get_video_list(f, video_list)
