@@ -1,13 +1,12 @@
 import os, sys, subprocess
 import pickle as pk
 #path = '/home/al-farabi/Desktop/video_pool/hmdb51_org/'
-path = '/home/Hao/Work/fv/'
+path = '/media/hao/My Book/raw/'
 #target_path = '/home/al-farabi/Desktop/hmdb_features_fix360/'
 #target_path = '/home/Hao/Work/mid_features_fix360/'
 dirs = os.listdir(path)
-f = open('/home/Hao/Work/mid_list.txt', 'r')
-f2 = open('/home/Hao/Work/mid_list2.txt', 'w')
-
+f = open('/home/hao/Desktop/raw_list.txt', 'w')
+#f2 = open('/home/hao/Desktop/raw_list2.txt', 'w')
 
 def get_cmtz(sel_file):
         cmtz = []
@@ -16,10 +15,11 @@ def get_cmtz(sel_file):
                 b = ele[2].find('bow')
                 cmtz.append('_' + ele[2][b + 4 : a])
         return cmtz
-
+'''
 file_path = '/home/Hao/Work/viral_data/mid_cmts/bow/sel/selK5_T5.pkl'
 sel_file = pk.load(open(file_path,'r'))
 cmtz = get_cmtz(sel_file)
+'''
 '''
 dirs2 = os.listdir(target_path)
 for i in dirs2:
@@ -34,7 +34,6 @@ def SuForC(Path):
     Re = Re.replace('&','\&')
     return Re
 
-video_names = []
 def get_video_list(f, video_names):
     for line in f:
         temp = line[0 : len(line) - 1]
@@ -42,8 +41,16 @@ def get_video_list(f, video_names):
         xx = temp.split('/')
         video_names.append(xx[len(xx) - 1] + '.npy')
     return video_names
-video_names = get_video_list(f, video_names)
 
+for i in dirs:
+	if i[len(i) - 3 : len(i)] == '.py':
+		continue
+	folder = path + i + '/' + i + '.mp4'
+	f.write(folder + '\n')
+f.close()
+'''
+video_names = []
+video_names = get_video_list(f, video_names)
 count = 0
 for i in cmtz:
     folder = path + i
@@ -54,7 +61,8 @@ for i in cmtz:
         print count
         f2.write(folder + '.npy\n')
 	#subprocess.call('rm ' + i, shell = True);
-    '''
+'''
+'''
     files = os.listdir(folder)
     for j in files:
         if j[0 : 5] == 'jukin':
@@ -65,5 +73,5 @@ for i in cmtz:
         #else:
         #   temp = SuForC(j)
         #   subprocess.call('rm ' + path + i + '/' + temp, shell=True)
-    '''
+'''
 #f.close()

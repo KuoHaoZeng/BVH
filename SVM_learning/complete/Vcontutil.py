@@ -9,7 +9,8 @@ def SuForC(Path):
                 Re = Re.replace('(','\(')
                 Re = Re.replace(')','\)')
                 Re = Re.replace('&','\&')
-                return Re
+                Re = Re.replace(' ','\ ')
+		return Re
 
 def DigName(Path, str1, str2):
 		Temp = Path.split(str2)
@@ -19,11 +20,11 @@ def DigName(Path, str1, str2):
 def Extracting(fulPath, svPath):
 	# check whether .avi is existing or not
 	CPath = SuForC(fulPath)
+	CsvPath = SuForC(svPath)
 	video = DigName(fulPath, '/', '.')
 	if os.path.exists(fulPath) == False:
 		print('Error: ' + fulPath + ' does not exist.')
 		sys.exit()
-
 	# remove oldder verison
 	if os.path.exists(svPath + video) == True:
 		subprocess.call('rm ' + svPath + video, shell = True)
@@ -31,7 +32,7 @@ def Extracting(fulPath, svPath):
 	print(video + ' Features Extracting ......')
 	tStart=time.time()
 	subprocess.call('./Video ' + CPath, shell = True)
-	subprocess.call('./DenseTrackStab ' + CPath + ' ' + svPath, shell = True)
+	subprocess.call('./DenseTrackStab ' + CPath + ' ' + CsvPath, shell = True)
 	tEnd=time.time()
 	print('Cost ' + str(round(tEnd-tStart,3)) + ' sec.\n')
 

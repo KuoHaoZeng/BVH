@@ -72,10 +72,11 @@ def video_edit(text):
 	print 'done!!'
 
 def mid_features(text, f = None):
-	temp = text.split(' ')
-        ele = temp[0]
+	#temp = text.split(' ')
+        #ele = temp[0]
         #target = folder + ele + '/' + ele + '.avi'
-	target = ele + '.avi'
+	#target = ele + '.avi'
+	target = text
 	Vcontutil.Extracting(target, output_dir)
 
 def check_features_size(List, samp = 0):
@@ -312,7 +313,7 @@ def Load_mAP(groups):
 			D = Vcontutil.numpyVstack(D, data)
 			B = Vcontutil.numpyVstack(B, bow_g)
 	return D
-
+'''
 ### mid video set extracting
 ## Load Cluster by seeds seletion
 clu_path = '/home/Hao/Work/Cmts/cmt_clu3.txt'
@@ -341,7 +342,7 @@ for i in range(len(tas)):
 	ls[i] = l[np.where(ta == tas[i])[0][0]]
 np.savez('/home/Hao/Work/plot', l = ls, ta = tas)
 #group_data = np.load('/home/Hao/Work/group_data.npy')
-
+'''
 '''
 ### Test for hmdb dataset
 hmdb_list_path = '/home/al-farabi/Desktop/inList_tt1T.txt'
@@ -407,11 +408,14 @@ fv_hmdb = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
 #p.map(cross_validation, clu_group)
 #cross_validation(clu_group[0])
 '''
-'''
+
 ### Dense Trajectory Feature Extrating
+f = open('/home/hao/Desktop/raw_list.txt', 'r')
+video_list = get_video_list(f, video_list)
+output_dir = '/media/hao/My Book/raw_features/'
 p = Pool(4)
 p.map(mid_features, video_list)
-'''
+
 '''
 ### Gmm model training
 f = open('/home/al-farabi/Desktop/hmdb_list.txt', 'r')
