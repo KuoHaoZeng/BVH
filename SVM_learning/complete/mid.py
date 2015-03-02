@@ -1,4 +1,4 @@
-import Vcontutil, Vcont, os, subprocess, sys, random, mlpy, time
+import Vcontutil, Vcont, os, subprocess, sys, random, mlpy, time, math
 import pickle as pk
 import numpy as np
 from multiprocessing import Pool
@@ -196,6 +196,11 @@ def get_total_fv(List):
         np.save('/home/al-farabi/Desktop/hmdb_dataset_fv_tes', fv)
 	return fv
 
+def get_seed_name(txt):
+	a = txt.find('all')
+        name = '_' + txt[0 : a]
+	return name
+
 def cross_validation(cluster):
 	#fv_tr_neg = []
         #fv_te_neg = []
@@ -209,8 +214,7 @@ def cross_validation(cluster):
 	#fv_te_neg = np.load('/home/Hao/Work/neg_te_fv.npy')
 	sTime = time.time()
 	if len(cluster) != 0:
-		a = cluster[0].find('all')
-                name = '_' + cluster[0][0 : a]
+		name = get_seed_name(cluster[0])
 		print '\n####### ' + name + ' #######'
 		clustering = get_group(cluster[1 : len(cluster)])	
 		clustering_neg = get_group(range(fv_hmdb.shape[0]))
@@ -251,6 +255,93 @@ def cross_validation(cluster):
 		return
 	print 'Time cost: ' + str(round(time.time() - sTime, 3)) + 'second'
 
+def get_tfidf(tfidf_count, group, K):
+	bow_temp = np.zeros(tfidf_count.shape[1])
+	bow = np.zeros(tfidf_count.shape[1])
+	for ele in group:
+		temp = np.sort(tfidf_count[int(ele)])
+		for i in range(K + 1):
+			i += 1
+			bow_temp[np.where(tfidf_count[int(ele)] == temp[len(temp) - i])[0][0]] += tfidf_count[int(ele)][np.where(tfidf_count[int(ele)] == temp[len(temp) - i])[0][0]]
+		#bow += tfidf_count[int(ele)]
+
+	temp = np.sort(bow_temp)
+        for i in range(K + 1):
+        	i += 1
+               	bow[np.where(bow_temp == temp[len(temp) - i])[0][0]] += bow_temp[np.where(bow_temp == temp[len(temp) - i])[0][0]]
+	bow *= idf
+	bow /= np.dot(bow, bow) ** 0.5
+	return bow
+
+def compute_entropy(bow):
+	entropy = 0
+    	for i in np.where(bow != 0)[0]:
+            	entropy -= bow[i] * math.log(bow[i])
+	return entropy
+
+def Compute_term_acc(com_a, com_b):
+	correct = 0
+	for ele in com_a:
+		if ele in com_b:
+			correct += 1
+	return float(correct) / len(com_b)
+
+def Load_mAP(groups):
+	Fir = True
+	term_num = 10
+	for i in groups:
+		num = len(i)
+		name = get_seed_name(i[0])
+		#temp = np.load(cla_path + name + '/' + name + '_' + str(num) + '_accuracy.npy')
+		bow_g = get_tfidf(tfidf_count, i[1 : len(i)], term_num)
+		term_acc = 0
+		for j in i[1 : len(i)]:
+			bow_v = get_tfidf(tfidf_count, [j], term_num)
+			term_acc += Compute_term_acc(np.where(bow_v >= np.sort(bow_v)[np.where(np.sort(bow_v) != 0)[0][0]])[0], np.where(bow_g >= np.sort(bow_g)[np.where(np.sort(bow_g) != 0)[0][0]])[0])
+		term_acc /= num
+		print term_acc
+		#en = compute_entropy(bow_g)
+		data = Vcontutil.numpyHstack(name, num)
+		#data = Vcontutil.numpyHstack(data, float(sum(temp[:, 0])) / temp.shape[0])
+		data = Vcontutil.numpyHstack(data, term_acc)
+		if Fir == True:
+			D = data
+			B = bow_g
+			Fir = False
+		else:
+			D = Vcontutil.numpyVstack(D, data)
+			B = Vcontutil.numpyVstack(B, bow_g)
+	return D
+
+### mid video set extracting
+## Load Cluster by seeds seletion
+clu_path = '/home/Hao/Work/Cmts/cmt_clu3.txt'
+clu_file = open(clu_path, 'r')
+cluster_temp = clu_file.read()
+cluster = cluster_temp.split('\n')
+
+## Initial path setting
+cla_path = '/home/Hao/Work/cla/'
+
+## Get Cluster Group
+clu_group = get_clu(cluster[0 : len(cluster) - 2], cla_path)
+print len(cluster)
+## Get tfidf count
+tfidf_count = np.load('/home/Hao/Work/Cmts/tfidf_count.npy')
+idf = np.load('/home/Hao/Work/Cmts/mid_idf.npy')
+
+## Get group data [name, length, mP, entropy]
+D =  Load_mAP(clu_group)
+np.save('/home/Hao/Work/group_data', D)
+ta = D[:, 2]
+l = D[:, 1]
+tas = np.sort(ta)
+ls = np.zeros(len(l))
+for i in range(len(tas)):
+	ls[i] = l[np.where(ta == tas[i])[0][0]]
+np.savez('/home/Hao/Work/plot', l = ls, ta = tas)
+#group_data = np.load('/home/Hao/Work/group_data.npy')
+
 '''
 ### Test for hmdb dataset
 hmdb_list_path = '/home/al-farabi/Desktop/inList_tt1T.txt'
@@ -278,6 +369,7 @@ fv_hmdb = convert_index2fv(saved, fv_hmdb)
 np.save('/home/Hao/Work/hmdb_half_fv', fv_hmdb)
 sys.exit()
 '''
+'''
 ### Linear SVM learning
 ## Get mid file sort
 file_path = '/home/Hao/Work/viral_data/mid_cmts/bow/sel/selK5_T5.pkl'
@@ -295,15 +387,15 @@ traing_set_path = '/home/Hao/Work/traing_set/'
 cla_path = '/home/Hao/Work/cla/'
 
 ## Get Cluster Group
-clu_group = get_clu(cluster[770 : len(cluster) - 2], cla_path)
+clu_group = get_clu(cluster[600 : len(cluster) - 2], cla_path)
 
 ## Load prepared fv
 fv_mid = np.load('/home/Hao/Work/mid_total_fv.npy')
-fv_hmdb = np.load('/home/Hao/Work/hmdb_half_fv.npy')
+fv_hmdb = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
 
 #cross_validation(clu_group[1])
-p = Pool(2)
-p.map(cross_validation, clu_group[0 : 4])
+#p = Pool(2)
+#p.map(cross_validation, clu_group)
 
 #f = open('/home/Hao/Work/mid_list.txt', 'r')
 #video_list = get_video_list(f, video_list)
@@ -314,11 +406,12 @@ p.map(cross_validation, clu_group[0 : 4])
 #p = Pool(4)
 #p.map(cross_validation, clu_group)
 #cross_validation(clu_group[0])
-
+'''
+'''
 ### Dense Trajectory Feature Extrating
-#p = Pool(4)
-#p.map(mid_features, video_list)
-
+p = Pool(4)
+p.map(mid_features, video_list)
+'''
 '''
 ### Gmm model training
 f = open('/home/al-farabi/Desktop/hmdb_list.txt', 'r')
