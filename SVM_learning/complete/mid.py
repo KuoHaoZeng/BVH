@@ -6,6 +6,7 @@ from multiprocessing import Pool
 video_list = []
 video_names = []
 crop = []
+mid_numbers = 842
 
 def get_video_list(f, video_list):
         for line in f:
@@ -33,6 +34,12 @@ def get_cmtz(sel_file):
 		cmtz.append('_' + ele[2][b + 4 : a])
 	return cmtz
 
+def extract_list(List, index_list):
+	Temp = []
+	for i in index_list:
+		Temp.append(List[i])
+	List = Temp
+	return List
 #folder = '/home/al-farabi/Desktop/mid/'
 #dirs = os.listdir(folder)
 #output_dir = '/home/al-farabi/Desktop/hmdb_features_fix360'
@@ -154,16 +161,21 @@ def linear_pred(fv, Label, svm):
 	#acc = Vcontutil.linearSVM_P(fv, Label, svm)
 	return acc, acc_pos, acc_neg
 
-def get_group(clu):
+def get_group(clu, count):
 	group = map(int, clu)
 	random.shuffle(group)
-	n = len(group) / 5
-	A = group[0 : n]
-	B = group[n : 2 * n]	
-	C = group[2 * n : 3 * n]
-	D = group[3 * n : 4 * n]
-	E = group[4 * n : len(group)]
-	clustering = [A, B, C, D, E]
+	n = len(group) / count
+	r = len(group) % count
+	stamp = 0
+	clustering = []
+	for i in range(count):
+		if r != 0:
+			clustering.append(group[stamp : stamp + n + 1])
+			r -= 1
+			stamp += n + 1
+		else:
+			clustering.append(group[stamp : stamp + n])
+			stamp += n
 	return clustering
 
 def convert_index2fv(clu, fv_all):
@@ -217,17 +229,21 @@ def cross_validation(cluster):
 	if len(cluster) != 0:
 		name = get_seed_name(cluster[0])
 		print '\n####### ' + name + ' #######'
-		clustering = get_group(cluster[1 : len(cluster)])	
-		clustering_neg = get_group(range(fv_hmdb.shape[0]))
+		count = 5
+		if len(cluster) - 2 < 5:
+			count = len(cluster) - 1
+		clustering = get_group(cluster[1 : len(cluster)], count)
+		clustering_neg = get_group(range(fv_hmdb.shape[0]), count)
 		svm = []
-		for i in range(5):
+		for i in range(count):
 			clu = []
 			clu_neg = []
-			for j in range(5):
-				if j == i:
+			for j in range(count):
+				if j == i and count > 1:
 					continue
 				clu += clustering[j]
 				clu_neg += clustering_neg[j]
+			print clu
 			fv_pos = convert_index2fv(clu, fv_mid)
 			label_pos = np.ones(fv_pos.shape[0])
 			fv_neg = convert_index2fv(clu_neg, fv_hmdb)
@@ -247,9 +263,13 @@ def cross_validation(cluster):
 				accuracy = np.array(acc)
 			else:
 				accuracy = Vcontutil.numpyVstack(accuracy, acc)
-		acc_avg = float(sum(accuracy[:, 0])) / accuracy.shape[0]
+		if count > 1:
+			acc_avg = float(sum(accuracy[: , 0])) / accuracy.shape[0]
+			index = np.where(accuracy == max(accuracy[: , 0]))[0][0]
+		else:
+			acc_avg = accuracy[0]
+			index = 0
 		print 'cross-validation accuracy: ' + str(acc_avg)
-		index = np.where(accuracy == max(accuracy[:, 0]))[0][0]
 		svm[index].save_model(cla_path + name + '/' + name + '_' + str(len(cluster)) + '.model')
 		np.save(cla_path + name + '/' + name + '_' + str(len(cluster)) + '_accuracy', accuracy)
 	else:
@@ -299,6 +319,7 @@ def Load_mAP(groups):
 		for j in i[1 : len(i)]:
 			bow_v = get_tfidf(tfidf_count, [j], term_num)
 			term_acc += Compute_term_acc(np.where(bow_v >= np.sort(bow_v)[np.where(np.sort(bow_v) != 0)[0][0]])[0], np.where(bow_g >= np.sort(bow_g)[np.where(np.sort(bow_g) != 0)[0][0]])[0])
+			
 		term_acc /= num
 		print term_acc
 		#en = compute_entropy(bow_g)
@@ -313,7 +334,37 @@ def Load_mAP(groups):
 			D = Vcontutil.numpyVstack(D, data)
 			B = Vcontutil.numpyVstack(B, bow_g)
 	return D
-'''
+
+def get_number_info_from_group_data(group_data, index = 0, one_d = False):
+	if one_d == True:
+		temp = group_data
+	else:
+		temp = group_data[: , index]
+	data = np.zeros(len(temp))
+	xx = 0
+	for i in temp:
+		data[xx] = float(i)
+		xx += 1
+	return data
+
+def expand_group(groups, term_acc):
+        term_num = 10
+	size = []
+        for k in range(len(groups)):
+		i = list(groups[k])
+                bow_g = get_tfidf(tfidf_count, i[1 : len(i)], term_num)
+		entries = np.delete(range(mid_numbers) , get_number_info_from_group_data(i[1 : len(i)], 0, True))
+                for j in entries:
+                        bow_v = get_tfidf(tfidf_count, [j], term_num)
+                        acc = Compute_term_acc(np.where(bow_v >= np.sort(bow_v)[np.where(np.sort(bow_v) != 0)[0][0]])[0], np.where(bow_g >= np.sort(bow_g)[np.where(np.sort(bow_g) != 0)[0][0]])[0])
+			if acc > term_acc[k]*1.5:
+				groups[k].append(str(j))
+		#print i[1 : len(i)]
+		#print groups[k]
+		print len(i), len(groups[k])
+		size.append([len(i), len(groups[k])])
+	return groups, size
+'''				
 ### mid video set extracting
 ## Load Cluster by seeds seletion
 clu_path = '/home/Hao/Work/Cmts/cmt_clu3.txt'
@@ -326,14 +377,30 @@ cla_path = '/home/Hao/Work/cla/'
 
 ## Get Cluster Group
 clu_group = get_clu(cluster[0 : len(cluster) - 2], cla_path)
-print len(cluster)
 ## Get tfidf count
 tfidf_count = np.load('/home/Hao/Work/Cmts/tfidf_count.npy')
 idf = np.load('/home/Hao/Work/Cmts/mid_idf.npy')
 
 ## Get group data [name, length, mP, entropy]
+#group_data = np.load('/home/Hao/Work/group_data.npy')
+clu_group = np.load('/home/Hao/Work/group_expand.npy')
+remove = []
+for i in range(len(clu_group)):
+	if len(clu_group[i]) < 6:
+		remove.append(i)
+clu_group = np.delete(clu_group, remove)
 D =  Load_mAP(clu_group)
-np.save('/home/Hao/Work/group_data', D)
+#np.save('/home/Hao/Work/group_data', D)
+
+## Expanse group
+term_acc = get_number_info_from_group_data(group_data, 2)
+term_acc_index = np.where(term_acc >= 0.35)[0]
+clu_group = extract_list(clu_group, term_acc_index)
+[clu_group, size] = expand_group(clu_group, term_acc)
+np.save('/home/Hao/Work/group_expand', clu_group)
+np.save('/home/Hao/Work/group_size', size)
+
+# Sort term accuracy and length of group for plotting
 ta = D[:, 2]
 l = D[:, 1]
 tas = np.sort(ta)
@@ -341,7 +408,6 @@ ls = np.zeros(len(l))
 for i in range(len(tas)):
 	ls[i] = l[np.where(ta == tas[i])[0][0]]
 np.savez('/home/Hao/Work/plot', l = ls, ta = tas)
-#group_data = np.load('/home/Hao/Work/group_data.npy')
 '''
 '''
 ### Test for hmdb dataset
@@ -370,7 +436,7 @@ fv_hmdb = convert_index2fv(saved, fv_hmdb)
 np.save('/home/Hao/Work/hmdb_half_fv', fv_hmdb)
 sys.exit()
 '''
-'''
+
 ### Linear SVM learning
 ## Get mid file sort
 file_path = '/home/Hao/Work/viral_data/mid_cmts/bow/sel/selK5_T5.pkl'
@@ -378,7 +444,7 @@ sel_file = pk.load(open(file_path,'r'))
 cmtz = get_cmtz(sel_file)
 
 ## Load Cluster by seeds seletion
-clu_path = '/home/Hao/Work/Cmts/cmt_clu2.txt'
+clu_path = '/home/Hao/Work/Cmts/cmt_clu3.txt'
 clu_file = open(clu_path, 'r')
 cluster_temp = clu_file.read()
 cluster = cluster_temp.split('\n')
@@ -388,15 +454,50 @@ traing_set_path = '/home/Hao/Work/traing_set/'
 cla_path = '/home/Hao/Work/cla/'
 
 ## Get Cluster Group
-clu_group = get_clu(cluster[600 : len(cluster) - 2], cla_path)
+clu_group = get_clu(cluster[0 : len(cluster) - 2], cla_path)
+group_data = np.load('/home/Hao/Work/group_data.npy')
+term_acc = get_number_info_from_group_data(group_data, 2)
+term_acc = np.where(term_acc >= 0.35)[0]
+#print term_acc
+leng = get_number_info_from_group_data(group_data, 1)
+xxx = extract_list(leng, term_acc)
+xxx = np.array(xxx)
+#print np.mean(xxx)
+#print len(np.where(xxx>=0)[0])
+temp = []
+for i in term_acc:
+	if leng[i] >= 5:
+		temp.append(i)
+term_acc = temp
+#print term_acc
+
+## compute coverage
+clu_group = extract_list(clu_group, term_acc)
+clu_group = np.load('/home/Hao/Work/group_expand.npy')
+remove = []
+for i in range(len(clu_group)):
+        if len(clu_group[i]) < 6:
+                remove.append(i)
+clu_group = np.delete(clu_group, remove)
+
+coverage = np.zeros(len(cmtz))
+for i in clu_group:
+	for j in range(len(i) - 1):
+		j += 1
+		coverage[int(i[j])] = 1
+c = 0
+for i in coverage:
+	if i == 1:
+		c += 1
+#print float(c) / len(cmtz)
 
 ## Load prepared fv
 fv_mid = np.load('/home/Hao/Work/mid_total_fv.npy')
 fv_hmdb = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
 
-#cross_validation(clu_group[1])
-#p = Pool(2)
-#p.map(cross_validation, clu_group)
+#cross_validation(clu_group[0])
+p = Pool(2)
+p.map(cross_validation, clu_group)
 
 #f = open('/home/Hao/Work/mid_list.txt', 'r')
 #video_list = get_video_list(f, video_list)
@@ -407,15 +508,15 @@ fv_hmdb = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
 #p = Pool(4)
 #p.map(cross_validation, clu_group)
 #cross_validation(clu_group[0])
-'''
 
+'''
 ### Dense Trajectory Feature Extrating
 f = open('/home/hao/Desktop/raw_list.txt', 'r')
 video_list = get_video_list(f, video_list)
 output_dir = '/media/hao/My Book/raw_features/'
 p = Pool(4)
 p.map(mid_features, video_list)
-
+'''
 '''
 ### Gmm model training
 f = open('/home/al-farabi/Desktop/hmdb_list.txt', 'r')
