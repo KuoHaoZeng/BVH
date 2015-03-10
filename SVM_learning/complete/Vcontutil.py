@@ -113,8 +113,8 @@ def fisher_vector(Data, gmm, fulPath): #gmm is a Gmm model class and can be seen
 
 	np.save(fulPath,fv)
 
-def linearSVM_T(fvAll, ClassAll, c):
-	svm = mlpy.LibLinear(solver_type='l2r_l2loss_svc', C=c)
+def linearSVM_T(fvAll, ClassAll, c, w):
+	svm = mlpy.LibLinear('l2r_l2loss_svc', c, 0.01, w)
         svm.learn(fvAll, ClassAll)
         #svm.save_model('linear.model')
         Label=svm.pred(fvAll)

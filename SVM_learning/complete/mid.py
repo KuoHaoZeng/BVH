@@ -133,8 +133,8 @@ def fisherGN(ele):
         else:
                 print name + '.npy already exist!'
 
-def linear_SVM(fv, Label, C = 100):
-        svm = Vcontutil.linearSVM_T(fv, Label, C)
+def linear_SVM(fv, Label, C, w):
+        svm = Vcontutil.linearSVM_T(fv, Label, C, w)
         return svm
 
 def linear_pred(fv, Label, svm):
@@ -152,14 +152,25 @@ def linear_pred(fv, Label, svm):
 		else:
 			if y[i] > 0:
 				error_neg += 1
+
+	ys = sorted(y)
+	num = 0
+	i = 1
+	ap = 0
+	while num < num_pos:
+		if Label[np.where(y == ys[len(ys) - i])[0][0]] > 0:
+			num += 1 
+			ap += float(num) / (i * num_pos)
+		i += 1
 	acc_pos = 1 - float(error_pos) / num_pos
 	acc_neg = 1 - float(error_neg) / (y.shape[0] - num_pos)
 	acc = (acc_pos + acc_neg) / 2
 	print 'average accuracy: ' + str(acc)
 	print 'positive accuracy: ' + str(acc_pos)
 	print 'negative accuracy: ' + str(acc_neg)
+	print 'average precision: ' + str(ap)
 	#acc = Vcontutil.linearSVM_P(fv, Label, svm)
-	return acc, acc_pos, acc_neg
+	return acc, acc_pos, acc_neg, ap
 
 def get_group(clu, count):
 	group = map(int, clu)
@@ -250,7 +261,8 @@ def cross_validation(cluster):
 			label_neg = np.zeros(fv_neg.shape[0])
 			fv = Vcontutil.numpyVstack(fv_pos, fv_neg)
 			label = Vcontutil.numpyHstack(label_pos, label_neg)
-			svm.append(linear_SVM(fv, label))
+			w = {0 : 1, 1 : 1}
+			svm.append(linear_SVM(fv, label, 100, w))
 
                         fv_pos = convert_index2fv(clustering[i], fv_mid)
 			label_pos = np.ones(fv_pos.shape[0])
@@ -263,14 +275,17 @@ def cross_validation(cluster):
 				accuracy = np.array(acc)
 			else:
 				accuracy = Vcontutil.numpyVstack(accuracy, acc)
+
+			svm[i].save_model(cla_path + name + '/' + name + '_' + str(len(cluster)) + '_' + str(i) + '.model')
+
 		if count > 1:
-			acc_avg = float(sum(accuracy[: , 0])) / accuracy.shape[0]
+			acc_avg = float(sum(accuracy[: , 3])) / accuracy.shape[0]
 			index = np.where(accuracy == max(accuracy[: , 0]))[0][0]
 		else:
 			acc_avg = accuracy[0]
 			index = 0
-		print 'cross-validation accuracy: ' + str(acc_avg)
-		svm[index].save_model(cla_path + name + '/' + name + '_' + str(len(cluster)) + '.model')
+		print 'cross-validation mean average precision: ' + str(acc_avg)
+		#svm[index].save_model(cla_path + name + '/' + name + '_' + str(len(cluster)) + '.model')
 		np.save(cla_path + name + '/' + name + '_' + str(len(cluster)) + '_accuracy', accuracy)
 	else:
 		return
@@ -495,9 +510,10 @@ for i in coverage:
 fv_mid = np.load('/home/Hao/Work/mid_total_fv.npy')
 fv_hmdb = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
 
-#cross_validation(clu_group[0])
+#cross_validation(clu_group[1])
+#sys.exit()
 p = Pool(2)
-p.map(cross_validation, clu_group)
+p.map(cross_validation, clu_group[1000 : 2000])
 
 #f = open('/home/Hao/Work/mid_list.txt', 'r')
 #video_list = get_video_list(f, video_list)
@@ -508,7 +524,65 @@ p.map(cross_validation, clu_group)
 #p = Pool(4)
 #p.map(cross_validation, clu_group)
 #cross_validation(clu_group[0])
+'''
+## accuracy & coverage compute
+cla_path = '/home/Hao/Work/cla_nonweight/'
+group_acc = []
+for i in clu_group:
+	name = get_seed_name(i[0])
+	temp = np.load(cla_path + name + '/' + name + '_' + str(len(i)) + '_accuracy.npy')
+	group_acc.append(float(sum(temp[:, 0])) / len(temp))
+#print group_acc[1]
+#sys.exit()
+acc_sort = sorted(group_acc)
+length = []
+for i in range(len(clu_group)):
+	index_temp = group_acc.index(acc_sort[i])
+	length.append(len(clu_group[index_temp]))
+	if i < 1:
+		print acc_sort[i], len(clu_group[index_temp]), clu_group[index_temp]
+ls = np.array(length)
+ta = np.array(acc_sort) 
+np.savez('/home/Hao/Work/plot', l = ls, ta = ta)
+sys.exit()
 
+index = []
+index.append(group_acc.index(acc_sort[len(acc_sort) - 1]))
+for i in range(len(clu_group) - 1):
+	group1 = clu_group[index[len(index) - 1]]
+	index_temp = group_acc.index(acc_sort[len(acc_sort) - i - 1])
+	group2 = clu_group[index_temp]
+	if group2 > group1:
+		temp = group1
+		group1 = group2
+		group2 = temp
+	cov = 0
+	for j in range(len(group2) - 1):
+		if group2[j + 1] in group1:
+			cov += 1
+	if (float(cov) / len(group1)) < 0.6 and group_acc[index_temp] > 0.7:
+		index.append(index_temp)
+		print index_temp
+	if len(index) == 500:
+		break
+print len(index)
+print group_acc[index[len(index) - 1]]
+
+remove = range(len(clu_group))
+remove = np.delete(remove, index)
+clu_group = np.delete(clu_group, remove)
+
+coverage = np.zeros(len(cmtz))
+for i in clu_group:
+        for j in range(len(i) - 1):
+                j += 1
+                coverage[int(i[j])] = 1
+c = 0
+for i in coverage:
+        if i == 1:
+                c += 1
+print float(c) / len(cmtz)
+'''
 '''
 ### Dense Trajectory Feature Extrating
 f = open('/home/hao/Desktop/raw_list.txt', 'r')
