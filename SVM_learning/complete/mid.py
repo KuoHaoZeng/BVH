@@ -240,6 +240,10 @@ def cross_validation(cluster):
 	if len(cluster) != 0:
 		name = get_seed_name(cluster[0])
 		print '\n####### ' + name + ' #######'
+		if os.path.isfile(cla_path + name + '/' + name + '_' + str(len(cluster)) + '_accuracy.npy'):
+                	print 'done'
+                	return
+
 		count = 5
 		if len(cluster) - 2 < 5:
 			count = len(cluster) - 1
@@ -512,8 +516,8 @@ fv_hmdb = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
 
 #cross_validation(clu_group[1])
 #sys.exit()
-p = Pool(2)
-p.map(cross_validation, clu_group[1000 : 2000])
+#p = Pool(2)
+#p.map(cross_validation, clu_group[0 : 2000])
 
 #f = open('/home/Hao/Work/mid_list.txt', 'r')
 #video_list = get_video_list(f, video_list)
@@ -526,19 +530,25 @@ p.map(cross_validation, clu_group[1000 : 2000])
 #cross_validation(clu_group[0])
 '''
 ## accuracy & coverage compute
-cla_path = '/home/Hao/Work/cla_nonweight/'
+cla_path = '/home/Hao/Work/cla/'
 group_acc = []
+group_pre = []
+xx = 0
 for i in clu_group:
 	name = get_seed_name(i[0])
+	if os.path.isfile(cla_path + name + '/' + name + '_' + str(len(i)) + '_accuracy.npy') == False:
+		continue
+	xx += 1
 	temp = np.load(cla_path + name + '/' + name + '_' + str(len(i)) + '_accuracy.npy')
 	group_acc.append(float(sum(temp[:, 0])) / len(temp))
+	group_pre.append(float(sum(temp[:, 3])) / len(temp))
 #print group_acc[1]
 #sys.exit()
 acc_sort = sorted(group_acc)
 length = []
-for i in range(len(clu_group)):
+for i in range(xx):
 	index_temp = group_acc.index(acc_sort[i])
-	length.append(len(clu_group[index_temp]))
+	length.append(group_pre[index_temp])
 	if i < 1:
 		print acc_sort[i], len(clu_group[index_temp]), clu_group[index_temp]
 ls = np.array(length)
