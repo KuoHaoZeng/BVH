@@ -1,4 +1,4 @@
-import Vcontutil, Vcont, os, subprocess, sys, random, mlpy, time, math
+import Vcontutil, Vcont, os, subprocess, sys, random, mlpy, time, math, sklearn.metrics
 import pickle as pk
 import numpy as np
 from multiprocessing import Pool
@@ -141,6 +141,7 @@ def linear_pred(fv, Label, svm):
         w = svm.w()
 	b = svm.bias()
 	y = np.dot(fv, w) + b
+	mp = sklearn.metrics.average_precision_score(Label, y)
 	error_pos = 0
 	num_pos = 0
 	error_neg = 0
@@ -169,8 +170,9 @@ def linear_pred(fv, Label, svm):
 	print 'positive accuracy: ' + str(acc_pos)
 	print 'negative accuracy: ' + str(acc_neg)
 	print 'average precision: ' + str(ap)
+	print 'mean precision: ' + str(mp)
 	#acc = Vcontutil.linearSVM_P(fv, Label, svm)
-	return acc, acc_pos, acc_neg, ap
+	return acc, acc_pos, acc_neg, ap, mp
 
 def get_group(clu, count):
 	group = map(int, clu)
@@ -239,6 +241,7 @@ def cross_validation(cluster):
 	sTime = time.time()
 	if len(cluster) != 0:
 		name = get_seed_name(cluster[0])
+		#name = cluster[0]
 		print '\n####### ' + name + ' #######'
 		if os.path.isfile(cla_path + name + '/' + name + '_' + str(len(cluster)) + '_accuracy.npy'):
                 	print 'done'
@@ -281,12 +284,14 @@ def cross_validation(cluster):
 				accuracy = Vcontutil.numpyVstack(accuracy, acc)
 
 			svm[i].save_model(cla_path + name + '/' + name + '_' + str(len(cluster)) + '_' + str(i) + '.model')
-
+			print svm[i].w()
+			print svm[i].bias()
+			sys.exit()
 		if count > 1:
-			acc_avg = float(sum(accuracy[: , 3])) / accuracy.shape[0]
+			acc_avg = float(sum(accuracy[: , 4])) / accuracy.shape[0]
 			index = np.where(accuracy == max(accuracy[: , 0]))[0][0]
 		else:
-			acc_avg = accuracy[0]
+			acc_avg = accuracy[4]
 			index = 0
 		print 'cross-validation mean average precision: ' + str(acc_avg)
 		#svm[index].save_model(cla_path + name + '/' + name + '_' + str(len(cluster)) + '.model')
@@ -340,11 +345,17 @@ def Load_mAP(groups):
 			term_acc += Compute_term_acc(np.where(bow_v >= np.sort(bow_v)[np.where(np.sort(bow_v) != 0)[0][0]])[0], np.where(bow_g >= np.sort(bow_g)[np.where(np.sort(bow_g) != 0)[0][0]])[0])
 			
 		term_acc /= num
-		print term_acc
+        	information = np.load(cla_path + name + '/' + name + '_' + str(num) + '_accuracy.npy')
+        	if num > 2:
+			mp = np.mean(information[:,-1])
+		else:
+			mp = information[-1]
+		print name, num, term_acc, mp
 		#en = compute_entropy(bow_g)
 		data = Vcontutil.numpyHstack(name, num)
 		#data = Vcontutil.numpyHstack(data, float(sum(temp[:, 0])) / temp.shape[0])
 		data = Vcontutil.numpyHstack(data, term_acc)
+		data = Vcontutil.numpyHstack(data, mp)
 		if Fir == True:
 			D = data
 			B = bow_g
@@ -383,6 +394,48 @@ def expand_group(groups, term_acc):
 		print len(i), len(groups[k])
 		size.append([len(i), len(groups[k])])
 	return groups, size
+
+def get_overlap(A, B):
+	if len(B) > len(A):
+		temp = A
+		A = B
+		B = temp
+	xx = 0
+	for i in B:
+		if i in A:
+			xx += 1
+
+	return float(xx) / (len(A) + len(B) - xx)
+
+def train_term(cluster):
+	name = get_seed_name(cluster[0])
+	clu = np.array(cluster[1:], dtype = np.int)
+	print '\n####### ' + name + ' #######'	
+	if os.path.isfile(cla_path + name + '_' + str(len(cluster)) + '_' + str(i) + '.model'):
+        	print 'done'
+        	return
+	fv_pos = convert_index2fv(clu, fv_mid_training)
+        label_pos = np.ones(fv_pos.shape[0])
+        fv_neg = fv_hmdb_training
+        label_neg = np.zeros(fv_neg.shape[0])
+        fv = Vcontutil.numpyVstack(fv_pos, fv_neg)
+        label = Vcontutil.numpyHstack(label_pos, label_neg)
+        w = {0 : 1, 1 : 1}
+        svm = linear_SVM(fv, label, 100, w)
+	
+	fv_pos = fv_mid_testing
+        label_pos = np.ones(fv_pos.shape[0])
+        fv_neg = fv_hmdb_testing
+        label_neg = np.zeros(fv_neg.shape[0])
+        fv = Vcontutil.numpyVstack(fv_pos, fv_neg)
+        label = Vcontutil.numpyHstack(label_pos, label_neg)
+        acc = linear_pred(fv, label, svm)
+        accuracy = np.array(acc)
+
+        svm.save_model(cla_path + name + '_' + str(len(cluster)) + '_' + '.model')	
+	if not os.path.isfile(cla_path + 'acc/'):
+		subprocess.call('mkdir ' + cla_path + 'acc/', shell = True)
+	np.save(cla_path + 'acc/' + name + '_' + str(len(cluster)) + '_accuracy', accuracy)
 '''				
 ### mid video set extracting
 ## Load Cluster by seeds seletion
@@ -473,7 +526,7 @@ traing_set_path = '/home/Hao/Work/traing_set/'
 cla_path = '/home/Hao/Work/cla/'
 
 ## Get Cluster Group
-clu_group = get_clu(cluster[0 : len(cluster) - 2], cla_path)
+#clu_group = get_clu(cluster[0 : len(cluster) - 2], cla_path)
 group_data = np.load('/home/Hao/Work/group_data.npy')
 term_acc = get_number_info_from_group_data(group_data, 2)
 term_acc = np.where(term_acc >= 0.35)[0]
@@ -491,33 +544,68 @@ term_acc = temp
 #print term_acc
 
 ## compute coverage
-clu_group = extract_list(clu_group, term_acc)
-clu_group = np.load('/home/Hao/Work/group_expand.npy')
-remove = []
-for i in range(len(clu_group)):
-        if len(clu_group[i]) < 6:
-                remove.append(i)
-clu_group = np.delete(clu_group, remove)
+#clu_group = extract_list(clu_group, term_acc)
+clu_group = np.load('/home/Hao/Work/500_group_selection.npy')
+testing_set = np.load('/home/Hao/Work/mid_testing_set.npy')
+#testing_set = np.array(testing_set, np.str)
 
-coverage = np.zeros(len(cmtz))
-for i in clu_group:
-	for j in range(len(i) - 1):
-		j += 1
-		coverage[int(i[j])] = 1
-c = 0
-for i in coverage:
-	if i == 1:
-		c += 1
-#print float(c) / len(cmtz)
+training_group = []
+for i in clu_group[:335]:
+	#name = '_' + i[0][:-16]
+	temp = [i[0]]
+	#temp = []
+	for j in i[1:]:
+		if not int(j) in testing_set:
+			temp.append(j)
+		#else:
+			#print testing_set[np.where(testing_set == int(j))[0]], int(j)
+	#sys.exit()
+	#print len(i)
+	#print len(temp)
+	training_group.append(temp)
+	#if not os.path.exists(cla_path + name):
+        #	subprocess.call('mkdir ' + cla_path + name, shell = True)
+
+#xx = np.zeros(842)
+#for i in training_group:
+#	for j in i:
+#		print j
+#		xx[j] = 1
+#print sum(xx)
+#sys.exit()
+#remove = []
+#for i in range(len(clu_group)):
+#        if len(clu_group[i]) < 6:
+#                remove.append(i)
+#clu_group = np.delete(clu_group, remove)
+
+#coverage = np.zeros(len(cmtz))
+#for i in clu_group:
+#	for j in range(len(i) - 1):
+#		j += 1
+#		coverage[int(i[j])] = 1
+#c = 0
+#for i in coverage:
+#	if i == 1:
+#		c += 1
+##print float(c) / len(cmtz)
 
 ## Load prepared fv
-fv_mid = np.load('/home/Hao/Work/mid_total_fv.npy')
-fv_hmdb = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
+#fv_mid = np.load('/home/Hao/Work/mid_total_fv.npy')
+#fv_hmdb = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
 
+fv_mid_training = np.load('/home/Hao/Work/mid_training_fv.npy')
+fv_mid_testing = np.load('/home/Hao/Work/mid_testing_fv.npy')
+fv_hmdb_training = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
+fv_hmdb_testing = np.load('/home/Hao/Work/hmdb_testing_fv.npy')
+
+#train_term(clu_group[1])
+p = Pool(2)
+p.map(train_term, training_group[:335])
 #cross_validation(clu_group[1])
 #sys.exit()
 #p = Pool(2)
-#p.map(cross_validation, clu_group[0 : 2000])
+#p.map(cross_validation, training_group[:335])
 
 #f = open('/home/Hao/Work/mid_list.txt', 'r')
 #video_list = get_video_list(f, video_list)
@@ -528,22 +616,139 @@ fv_hmdb = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
 #p = Pool(4)
 #p.map(cross_validation, clu_group)
 #cross_validation(clu_group[0])
+
 '''
-## accuracy & coverage compute
-cla_path = '/home/Hao/Work/cla/'
+### term accuracy & mean precision & coverage compute, testing group selection
+clu_group = np.load('/home/Hao/Work/group_expand.npy')
+cla_path = '/home/Hao/Work/cla_3_15/'
+
+fv_mid = np.load('/home/Hao/Work/mid_total_fv.npy')
+fv_hmdb = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
+label_neg = np.zeros(len(fv_hmdb))
+
+tfidf_count = np.load('/home/Hao/Work/Cmts/tfidf_count.npy')
+idf = np.load('/home/Hao/Work/Cmts/mid_idf.npy')
+
+#D = Load_mAP(clu_group)
+D = np.load('/home/Hao/Work/group_information.npy')
+
+length = np.array(D[:, -3], dtype = np.float32)
+term_acc = np.array(D[:, -2], dtype = np.float32)
+mp = np.array(D[:, -1], dtype = np.float32)
+
+short_index = np.where(length == 2)[0]
+length = np.delete(length, short_index)
+term_acc = np.delete(term_acc, short_index)
+mp = np.delete(mp, short_index)
+clu_group = np.delete(clu_group, short_index)
+#overlap = np.zeros([len(clu_group), len(clu_group)])
+#for i in range(len(clu_group)):
+#	for j in range(len(clu_group)):
+#		overlap[i,j] = get_overlap(clu_group[i], clu_group[j])
+#		print overlap[i, j]
+#np.save('/home/Hao/Work/group_overlap', overlap)
+overlap = np.load('/home/Hao/Work/group_overlap.npy')
+
+th = 0.805
+mp_sort = np.sort(mp)
+max_1 = 0
+index = [0]
+for i in range(len(mp_sort)):
+	if mp[i] > 0.9999999:
+		max_1 = max(max_1, length[i])
+		if max_1 == length[i]:
+			index[0] = i
+			overlapping = overlap[i]
+			original_index = range(len(mp))
+			delete_index = np.array([i])
+
+while len(delete_index) < (len(mp) - 1):
+	delete_index = Vcontutil.numpyHstack(delete_index, np.where(overlapping > th)[0])
+	original_index = np.delete(range(len(mp)) , delete_index)
+	overlapping = np.delete(overlapping , delete_index)
+	mp_eva = np.delete(mp, delete_index)
+	mp_max = max(mp_eva)
+	#print mp_max
+	index.append(original_index[np.where(mp_eva == mp_max)[0][0]])
+	delete_index = Vcontutil.numpyHstack(delete_index, index[-1])
+	overlapping = overlap[index[-1]]
+	print index[-1]
+print len(index)
+index = np.array(index, dtype = np.int)
+delete_index = np.delete(range(len(mp)), index)
+clu_save = np.delete(clu_group, delete_index)
+np.save('/home/Hao/Work/500_group_selection', clu_save)
+
+lucky = []
+for i in range(200):
+	mylist = []
+	for j in index:
+		for k in range(len(clu_group[j])):
+			if k == 0 or clu_group[j][k] in lucky:
+				continue
+			mylist += [clu_group[j][k]]
+	lucky.append(random.choice(mylist))
+	print lucky[-1]
+testing_group = np.array(lucky, dtype = np.int)
+training_group = np.delete(range(mid_numbers), testing_group)
+print len(training_group), len(testing_group)
+np.save('/home/Hao/Work/mid_testing_set', testing_group)
+np.save('/home/Hao/Work/mid_training_set', training_group)
+con = np.zeros(mid_numbers)
+for i in index:
+	xx = clu_group[i]
+	for j in xx[1:]:
+		con[int(j)] = 1
+xx = 0
+for i in con:
+	if i == 1:
+		xx += 1
+converage = float(xx) / mid_numbers
+print converage
+'''
+'''
+## merge different training computer results
+
+cla_path = '/home/Hao/Work/cla_3_15/'
+cla_path0 = '/home/Hao/Work/cla_server_3_15/'
+cla_path1 = '/home/Hao/Work/cla_Hertz_3_15/'
+cla_path2 = '/home/Hao/Work/cla_lab_3_15/'
 group_acc = []
 group_pre = []
 xx = 0
+yy = 0 
+zz = 0
 for i in clu_group:
 	name = get_seed_name(i[0])
 	if os.path.isfile(cla_path + name + '/' + name + '_' + str(len(i)) + '_accuracy.npy') == False:
-		continue
-	xx += 1
-	temp = np.load(cla_path + name + '/' + name + '_' + str(len(i)) + '_accuracy.npy')
-	group_acc.append(float(sum(temp[:, 0])) / len(temp))
-	group_pre.append(float(sum(temp[:, 3])) / len(temp))
+		xx += 1
+		
+		if os.path.isfile(cla_path0 + name + '/' + name + '_' + str(len(i)) + '_accuracy.npy') == True:
+			xx += 1
+			group_acc.append(i)
+			subprocess.call('cp -r ' + cla_path0 + name + '/ ' + cla_path + name + '/',shell = True)
+			continue
+		if os.path.isfile(cla_path1 + name + '/' + name + '_' + str(len(i)) + '_accuracy.npy') == True:
+                	yy += 1
+                	group_acc.append(i)
+                	subprocess.call('cp -r ' + cla_path1 + name + '/ ' + cla_path + name + '/',shell = True)
+                	continue
+		if os.path.isfile(cla_path2 + name + '/' + name + '_' + str(len(i)) + '_accuracy.npy') == True:
+                	zz += 1
+                	group_acc.append(i)
+                	subprocess.call('cp -r ' + cla_path2 + name + '/ ' + cla_path + name + '/',shell = True)
+                	continue
+		
+	#temp = np.load(cla_path + name + '/' + name + '_' + str(len(i)) + '_accuracy.npy')
+	#print temp
+	#group_acc.append(float(sum(temp[:, 0])) / len(temp))
+	#group_pre.append(float(sum(temp[:, 3])) / len(temp))
 #print group_acc[1]
-#sys.exit()
+group_acc = np.array(group_acc)
+print xx, yy, zz
+print len(group_acc)
+#np.save('/home/Hao/Work/group_r', group_acc)
+sys.exit()
 acc_sort = sorted(group_acc)
 length = []
 for i in range(xx):
