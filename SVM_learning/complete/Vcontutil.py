@@ -41,25 +41,80 @@ def Load_Unit_Features(fulPath, subsample):
 	with open(fulPath, 'rb') as f:
                 raw = np.fromfile(f, np.float32)
 	f.close()
-	# if frameNum > subsample > 0, subsampling conduct
-	VectorDim=426
-        FrameNum = len(raw) / VectorDim
-	if subsample != 0 and FrameNum > subsample:
-        	FrameNumVec = np.arange(FrameNum - 1)
-              	RandomSap = random.sample(FrameNumVec, subsample)
-                DataTemp = np.zeros(VectorDim * subsample, dtype = np.float32)
-                xx = 0
-        	for j in RandomSap:
-        		DataTemp[xx * VectorDim : (xx + 1) * VectorDim] = raw[j * VectorDim : (j + 1) * VectorDim].copy()
-                	xx += 1
-        	raw = DataTemp.copy()
-	Data = raw.copy()
-	Data.shape = -1, VectorDim
-		
-	print('---Unit features loaded done---')
-	print('Here is: ' + fulPath + '\n')
 
+	print('---Unit features loaded done---')
+        print('Here is: ' + fulPath + '\n')
+	
+	VectorDim=426
+	raw.shape = -1, VectorDim
+	FrameNum = raw.shape[0]
+        FrameNumVec = np.arange(FrameNum - 1)
+        
+	if subsample != 0 and FrameNum > subsample:
+                RandomSap = random.sample(FrameNumVec, subsample)
+		RandomSap = np.delete(range(FrameNum), RandomSap)
+        elif subsample == 0 or subsample > FrameNum:
+		return raw
+
+        Data = np.delete(raw, RandomSap, axis = 0)
 	return Data
+
+def Load_Raw_Features(fulPath, subsample):
+        # open and load the binary feature file
+        with open(fulPath, 'rb') as f:
+                raw = np.fromfile(f, np.float32)
+        f.close()
+       
+	print('---Unit features loaded done---')
+        print('Here is: ' + fulPath + '\n')
+ 
+	VectorDim=436
+	raw.shape = -1, VectorDim
+        FrameNum = raw.shape[0]
+        FrameNumVec = np.arange(FrameNum - 1)
+
+	if subsample != 0 and FrameNum > subsample:
+                RandomSap = random.sample(FrameNumVec, subsample)
+                RandomSap = np.delete(range(FrameNum), RandomSap)
+        elif subsample == 0 or subsample > FrameNum:
+		time_stamp = raw[:,0]
+        	Data = np.delete(raw, range(10), axis = 1)
+		return Data, time_stamp
+
+	Data = np.delete(raw, RandomSap, axis = 0)
+	time_stamp = raw[:,0]
+	Data = np.delete(Data, range(10), axis = 1)
+        
+        return Data, time_stamp
+
+def Load_timming_Features(fulPath, times, step):
+        # open and load the binary feature file
+        with open(fulPath, 'rb') as f:
+                raw = np.fromfile(f, np.float32)
+        f.close()
+        
+        VectorDim=436
+        raw.shape = -1, VectorDim
+
+        time_stamp = raw[:,0]
+        Data = np.delete(raw, range(10), axis = 1)
+
+        print Data.shape
+        print len(time_stamp)
+
+        temp = []
+        for j in xrange(len(time_stamp)):
+                if time_stamp[j] < times:
+                        continue
+                elif time_stamp[j] > times + step:
+                        break
+                temp.append(Data[j])
+        Data = np.array(temp)
+        print Data.shape
+        print('-timing features loaded done-')
+        #print('Here is: ' + fulPath + '\n')
+
+        return Data
 
 def numpyVstack(vA, vB):
 	if vA == []:
@@ -100,9 +155,13 @@ def gmm_training(Data, K, nt=1, nit=10, redo=1):
 
 def fisher_vector(Data, gmm, fulPath): #gmm is a Gmm model class and can be seen in Vcont.py
 	# apply the PCA to the image descriptor
-   	Data = np.dot(Data - gmm.mean, gmm.pca)
+	Data = np.dot(Data - gmm.mean, gmm.pca)
+	#print gmm.gmm
 	fv_mu = ynumpy.fisher(gmm.gmm, Data, include = 'mu')
+	np.set_printoptions(threshold=np.nan)
+	#print fv_mu
 	fv_sigma = ynumpy.fisher(gmm.gmm, Data, include = 'sigma')
+	#print fv_sigma
 	fv = fv_mu.copy()
 	fv = np.hstack((fv, fv_sigma))
 	# power-normalization
@@ -112,6 +171,21 @@ def fisher_vector(Data, gmm, fulPath): #gmm is a Gmm model class and can be seen
 	fv /= norms
 
 	np.save(fulPath,fv)
+
+def fisher_vector_rank(Data, gmm): #gmm is a Gmm model class and can be seen in Vcont.py
+        # apply the PCA to the image descriptor
+        Data = np.dot(Data - gmm.mean, gmm.pca)
+        fv_mu = ynumpy.fisher(gmm.gmm, Data, include = 'mu')
+        fv_sigma = ynumpy.fisher(gmm.gmm, Data, include = 'sigma')
+        fv = fv_mu.copy()
+        fv = np.hstack((fv, fv_sigma))
+        # power-normalization
+        fv = np.sign(fv) * np.abs(fv) ** 0.5
+        # L2 normalize
+        norms = LA.norm(fv)
+        fv /= norms
+
+        return fv
 
 def linearSVM_T(fvAll, ClassAll, c, w):
 	svm = mlpy.LibLinear('l2r_l2loss_svc', c, 0.01, w)

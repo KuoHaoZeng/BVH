@@ -1,4 +1,4 @@
-import Vcontutil, Vcont, os, subprocess, sys, random, mlpy, time, math, sklearn.metrics
+import Vcontutil, Vcont, os, subprocess, sys, random, mlpy, time, math, sklearn.metrics, heapq
 import pickle as pk
 import numpy as np
 from multiprocessing import Pool
@@ -7,6 +7,12 @@ video_list = []
 video_names = []
 crop = []
 mid_numbers = 842
+
+def get_tuple_index(arr):
+	index = np.zeros(len(arr))
+	for i in xrange(len(arr)):
+		index[i] = arr[i][0]
+	return index
 
 def get_video_list(f, video_list):
         for line in f:
@@ -86,25 +92,37 @@ def mid_features(text, f = None):
 	target = text
 	Vcontutil.Extracting(target, output_dir)
 
-def check_features_size(List, samp = 0):
+def check_features_size(List, samp = 0, raw = 0):
         #Features = []
-        size = 0
+        size = []
         for ele in List:
             #Feature = Vcontutil.Load_Unit_Features(output_dir + '/' + ele, samp)
-            Feature = Vcontutil.Load_Unit_Features(ele, samp)
-            size += Feature.shape[0]
+		if raw == 0:
+            		Feature = Vcontutil.Load_Unit_Features(ele, samp)
+		else:
+			[Feature, time_stamp] = Vcontutil.Load_Raw_Features(ele, samp)
+		size.append(Feature.shape[0])
             #Features = Vcontutil.numpyVstack(Features, Feature)
-        return size
+        size = np.array(size)
+	return size
 
-def get_features(List, samp):
+def get_features(List, samp, raw = 0):
         Features = []
         Feature = []
+	Stamp = []
+	print len(Stamp)
         for ele in List:
             #Feature = Vcontutil.Load_Unit_Features(output_dir + '/' + ele, samp)
-            Feature = Vcontutil.Load_Unit_Features(ele, samp)
-            Features = Vcontutil.numpyVstack(Features, Feature)
-            Feature = []
-        return Features
+		if raw == 0:
+        		Feature = Vcontutil.Load_Unit_Features(ele, samp)
+		else:
+			[Feature, time_stamp] = Vcontutil.Load_Raw_Features(ele, samp)
+			Stamp = Vcontutil.numpyHstack(Stamp, time_stamp)
+            	Features = Vcontutil.numpyVstack(Features, Feature)
+            	Feature = []
+	if len(Stamp) > 1:
+        	return Features, Stamp
+	return Features
 
 def mid_gmm(Features, sv_path, K = 256, nth = 1, nit = 30, redo = 1):
 	# gmm training
@@ -125,10 +143,128 @@ def fisherGN(ele):
         temp = ele.split('/')
         name = temp[len(temp) - 1]
         if not os.path.exists(gmm_path + '/' + name + '.npy'):
+	#if os.path.exists(gmm_path + '/' + name + '.npy'):
                 #gmm = Vcont.gmm_model(np.load(gmm_path + '/gmm.npz'))
                 #Feature = Vcontutil.Load_Unit_Features(output_dir + '/' + ele, 0)
                 print name + ' go go !!'
                 Feature = Vcontutil.Load_Unit_Features(ele, 0)
+                Vcontutil.fisher_vector(Feature, gmm, gmm_path + '/' + name)
+        else:
+                print name + '.npy already exist!'
+
+def fisherGN_rank(inp, step = 5, overlap = 2, fps = 25):
+        Q = inp[0]
+        ele = inp[1]
+        temp = ele.split('/')
+        name = temp[len(temp) - 1]
+        if 1:
+                print name + ' go go !!'
+		[Feature, time_stamp] = Vcontutil.Load_Raw_Features(ele, 0)
+                Feature = 0
+                end = int(time_stamp[len(time_stamp) - 1])
+                end = (((end - 125) / 50) + 1) * 50
+
+                f = open(matching_path + name + '/matching_frame' + name + '.txt','r')
+                n = 0
+                s = 0
+                e = 0
+                for line in f:
+                        n += 1
+                        if n == 3:
+                                s = int(line[11 : len(line)])
+                        elif n == 4:
+                                e = int(line[9 : len(line)])
+                if n < 3:
+                        return
+
+                hi = []
+                delete = []
+                boundary = []
+                lower = ((s / 50) + 1 ) * 50
+                uper = (e / 50) * 50 + 25
+                if (uper - lower) >= 125:
+                        xx = lower
+                        while 1:
+                                if (xx + 125) > e:
+                                        break
+                                hi.append(xx)
+                                delete.append(xx / 50)
+                                xx += 50
+                        xx = lower - 100
+                        while 1:
+                                if xx > e:
+                                        break
+                                if xx >= 0 and not xx in hi and xx <= end:
+                                        delete.append(xx / 50)
+                                        boundary.append(xx)
+                                xx += 50
+                if hi == []:
+                        delete = []
+                        xx = lower - 100
+                        hi.append(xx)
+                        if xx >=0 and xx <= end:
+                                delete.append(xx / 50)
+                        sili = abs(s - xx)
+                        while 1:
+                                xx += 50
+                                if xx > e:
+                                        break
+                                if xx >= 0:
+                                        if abs(s - xx) < sili:
+                                                sili = abs(s - xx)
+                                                if hi[0] >= 0 and hi[0] <= end:
+                                                        delete.append(hi[0] / 50)
+                                                        boundary.append(hi[0])
+                                                hi[0] = xx
+                                        else:
+                                                if xx <= end:
+                                                        delete.append(xx / 50)
+                                                        boundary.append(xx)
+
+                delete = np.array(delete)
+                nonhi = np.array(range((end / 50) + 1)) * 50
+                nonhi = np.delete(nonhi, delete)
+
+                hi = np.array(hi)
+                delete = np.array(delete)
+                nonhi = np.array(range((end / 50) + 1)) * 50
+                nonhi = np.delete(nonhi, delete)
+                if len(nonhi) == 0:
+                        nonhi = np.array(boundary)
+                fv = []
+                label = []
+                q = []
+                for i in hi:
+                        print 'highlight ' + str(i / 50)
+                        bye = np.where(np.where(time_stamp <= i)[0] > (i + 125))[0]
+                        D = Vcontutil.Load_timming_Features(ele, i, 125)
+                        fv.append(Vcontutil.fisher_vector_rank(D, gmm))
+                        label.append(1)
+                        q.append(Q)
+                for i in nonhi:
+                        print 'non-highlight ' + str(i / 50)
+                        bye = np.where(np.where(time_stamp <= i)[0] > (i + 125))[0]
+                        D = Vcontutil.Load_timming_Features(ele, i, 125)
+                        if len(D) == 0:
+                                continue
+                        fv.append(Vcontutil.fisher_vector_rank(D, gmm))
+                        label.append(0)
+                        q.append(Q)
+                fv = np.array(fv)
+                label = np.array(label)
+                q = np.array(q)
+                np.savez(gmm_path + '/' + name, fv = fv, label = label, q = q)
+        else:
+                print name + '.npy already exist!'
+
+def fisherGN_Raw(ele):
+        temp = ele.split('/')
+        name = temp[len(temp) - 1]
+        if not os.path.exists(gmm_path + '/' + name + '.npy'):
+                #gmm = Vcont.gmm_model(np.load(gmm_path + '/gmm.npz'))
+                #Feature = Vcontutil.Load_Unit_Features(output_dir + '/' + ele, 0)
+                print name + ' go go !!'
+                [Feature, Stamp] = Vcontutil.Load_Raw_Features(ele, 0)
                 Vcontutil.fisher_vector(Feature, gmm, gmm_path + '/' + name)
         else:
                 print name + '.npy already exist!'
@@ -219,8 +355,34 @@ def get_total_fv(List):
                 fvTemp = np.load(n)
                 fv = Vcontutil.numpyVstack(fv, fvTemp)
                 print n + ' loading ......'
-        np.save('/home/al-farabi/Desktop/hmdb_dataset_fv_tes', fv)
+        np.save('/home/Hao/Work/fv_3_21/hmdb_training_fv', fv)
+	print fv.shape
 	return fv
+
+def get_total_model(List):
+	model = []
+	for n in List:
+		if n[-6:] == '.model':
+			model_temp = mlpy.LibLinear.load_model('/home/Hao/Work/cla/' + n)
+			model.append(model_temp._w())
+			print model[-1]
+	model = np.array(model)
+	np.save('/home/Hao/Work/cla/all_model', model)
+
+#hmdb_set = np.load('/home/Hao/Work/Cmts/hmdb_training_set.npy')
+#hmdb_set = Vcontutil.numpyHstack(hmdb_set, np.load('/home/Hao/Work/Cmts/hmdb_training_set.npy'))
+#f = open('/home/Hao/Work/hmdb_list.txt', 'r')
+#video_list = get_video_list(f, video_list)
+#index = np.delete(range(len(video_list)), hmdb_set)
+#video_list = np.delete(video_list, index)
+#input_list = []
+#for i in video_list:
+#        input_list.append('/media/Hao/My Book/hmdb_total_fv/' + i[18:])
+
+#get_total_fv(input_list)
+#model_dir = os.listdir('/home/Hao/Work/cla/')
+#get_total_model(model_dir)
+#sys.exit()
 
 def get_seed_name(txt):
 	a = txt.find('all')
@@ -300,23 +462,19 @@ def cross_validation(cluster):
 		return
 	print 'Time cost: ' + str(round(time.time() - sTime, 3)) + 'second'
 
-def get_tfidf(tfidf_count, group, K):
-	bow_temp = np.zeros(tfidf_count.shape[1])
-	bow = np.zeros(tfidf_count.shape[1])
+def get_tfidf(tfidf, group, K, method = 0): #method = 0: top 10 of top 10, method = 1: directly sum
+	bow = np.zeros(tfidf.shape[1])
 	for ele in group:
-		temp = np.sort(tfidf_count[int(ele)])
-		for i in range(K + 1):
-			i += 1
-			bow_temp[np.where(tfidf_count[int(ele)] == temp[len(temp) - i])[0][0]] += tfidf_count[int(ele)][np.where(tfidf_count[int(ele)] == temp[len(temp) - i])[0][0]]
-		#bow += tfidf_count[int(ele)]
+		ele = int(ele)
+		if method == 0:
+			tmp = heapq.nlargest(K, enumerate(tfidf[ele]), key=lambda x:x[1])
+			for i in range(K):
+				bow[tmp[i][0]] += tfidf[ele][tmp[i][0]]
+		else:
+			bow += tfidf[ele]
 
-	temp = np.sort(bow_temp)
-        for i in range(K + 1):
-        	i += 1
-               	bow[np.where(bow_temp == temp[len(temp) - i])[0][0]] += bow_temp[np.where(bow_temp == temp[len(temp) - i])[0][0]]
-	bow *= idf
-	bow /= np.dot(bow, bow) ** 0.5
-	return bow
+	top_terms = heapq.nlargest(K, enumerate(bow), key=lambda x:x[1])	
+	return top_terms
 
 def compute_entropy(bow):
 	entropy = 0
@@ -334,36 +492,54 @@ def Compute_term_acc(com_a, com_b):
 def Load_mAP(groups):
 	Fir = True
 	term_num = 10
+	xx = 0
 	for i in groups:
 		num = len(i)
-		name = get_seed_name(i[0])
+		if num < 1:
+			break
+		#name = get_seed_name(i[0])
+		name = str(i[0])
 		#temp = np.load(cla_path + name + '/' + name + '_' + str(num) + '_accuracy.npy')
-		bow_g = get_tfidf(tfidf_count, i[1 : len(i)], term_num)
+		group_top_terms = get_tfidf(tfidf_bow, i, term_num)
+		group_top_terms = get_tuple_index(group_top_terms)
+		xx += 1
+		print 'case : ' + str(xx)
+		print group_top_terms
 		term_acc = 0
-		for j in i[1 : len(i)]:
-			bow_v = get_tfidf(tfidf_count, [j], term_num)
-			term_acc += Compute_term_acc(np.where(bow_v >= np.sort(bow_v)[np.where(np.sort(bow_v) != 0)[0][0]])[0], np.where(bow_g >= np.sort(bow_g)[np.where(np.sort(bow_g) != 0)[0][0]])[0])
-			
+		#for j in i:
+		'''
+		for j in query_video:
+			query_top_terms = get_tfidf(tfidf_bow, [j], term_num)
+			query_top_terms = get_tuple_index(query_top_terms)
+			for k in group_top_terms:
+				if k in query_top_terms:
+					term_acc += 1. / term_num
 		term_acc /= num
-        	information = np.load(cla_path + name + '/' + name + '_' + str(num) + '_accuracy.npy')
+        	print term_acc
+		'''
+		'''
+		information = np.load(cla_path + name + '/' + name + '_' + str(num) + '_accuracy.npy')
         	if num > 2:
 			mp = np.mean(information[:,-1])
 		else:
 			mp = information[-1]
 		print name, num, term_acc, mp
+		'''
 		#en = compute_entropy(bow_g)
 		data = Vcontutil.numpyHstack(name, num)
 		#data = Vcontutil.numpyHstack(data, float(sum(temp[:, 0])) / temp.shape[0])
 		data = Vcontutil.numpyHstack(data, term_acc)
-		data = Vcontutil.numpyHstack(data, mp)
+		#data = Vcontutil.numpyHstack(data, mp)
 		if Fir == True:
 			D = data
-			B = bow_g
+			#B = bow_g
+			group_top_term = group_top_terms
 			Fir = False
 		else:
 			D = Vcontutil.numpyVstack(D, data)
-			B = Vcontutil.numpyVstack(B, bow_g)
-	return D
+			#B = Vcontutil.numpyVstack(B, bow_g)
+			group_top_term = Vcontutil.numpyVstack(group_top_term, group_top_terms)
+	return D, group_top_term
 
 def get_number_info_from_group_data(group_data, index = 0, one_d = False):
 	if one_d == True:
@@ -382,10 +558,10 @@ def expand_group(groups, term_acc):
 	size = []
         for k in range(len(groups)):
 		i = list(groups[k])
-                bow_g = get_tfidf(tfidf_count, i[1 : len(i)], term_num)
+                bow_g = get_tfidf(tfidf_bow, i[1 : len(i)], term_num)
 		entries = np.delete(range(mid_numbers) , get_number_info_from_group_data(i[1 : len(i)], 0, True))
                 for j in entries:
-                        bow_v = get_tfidf(tfidf_count, [j], term_num)
+                        bow_v = get_tfidf(tfidf_bow, [j], term_num)
                         acc = Compute_term_acc(np.where(bow_v >= np.sort(bow_v)[np.where(np.sort(bow_v) != 0)[0][0]])[0], np.where(bow_g >= np.sort(bow_g)[np.where(np.sort(bow_g) != 0)[0][0]])[0])
 			if acc > term_acc[k]*1.5:
 				groups[k].append(str(j))
@@ -408,38 +584,108 @@ def get_overlap(A, B):
 	return float(xx) / (len(A) + len(B) - xx)
 
 def train_term(cluster):
+	i = cluster[1]
 	name = get_seed_name(cluster[0])
-	clu = np.array(cluster[1:], dtype = np.int)
-	print '\n####### ' + name + ' #######'	
-	if os.path.isfile(cla_path + name + '_' + str(len(cluster)) + '_' + str(i) + '.model'):
-        	print 'done'
-        	return
-	fv_pos = convert_index2fv(clu, fv_mid_training)
-        label_pos = np.ones(fv_pos.shape[0])
+	clu = np.array(cluster[2:], dtype = np.int)
+	print '\n####### ' + name + ' #######'
+	#if os.path.isfile(cla_path + name + '_' + str(i) + '_' + '.model'):
+        #	print 'done'
+	#	return
+	fv_pos = convert_index2fv(clu, fv_mid_total)
+	label_pos = np.ones(fv_pos.shape[0])
         fv_neg = fv_hmdb_training
         label_neg = np.zeros(fv_neg.shape[0])
-        fv = Vcontutil.numpyVstack(fv_pos, fv_neg)
+	fv = Vcontutil.numpyVstack(fv_pos, fv_neg)
         label = Vcontutil.numpyHstack(label_pos, label_neg)
-        w = {0 : 1, 1 : 1}
-        svm = linear_SVM(fv, label, 100, w)
-	
-	fv_pos = fv_mid_testing
-        label_pos = np.ones(fv_pos.shape[0])
-        fv_neg = fv_hmdb_testing
-        label_neg = np.zeros(fv_neg.shape[0])
-        fv = Vcontutil.numpyVstack(fv_pos, fv_neg)
-        label = Vcontutil.numpyHstack(label_pos, label_neg)
-        acc = linear_pred(fv, label, svm)
-        accuracy = np.array(acc)
+	w = {0 : 1, 1 : 1}
+	svm = linear_SVM(fv, label, 100, w)
 
-        svm.save_model(cla_path + name + '_' + str(len(cluster)) + '_' + '.model')	
-	if not os.path.isfile(cla_path + 'acc/'):
-		subprocess.call('mkdir ' + cla_path + 'acc/', shell = True)
-	np.save(cla_path + 'acc/' + name + '_' + str(len(cluster)) + '_accuracy', accuracy)
-'''				
+	#fv_pos = fv_mid_testing
+        #label_pos = np.ones(fv_pos.shape[0])
+        #fv_neg = fv_hmdb_testing
+        #label_neg = np.zeros(fv_neg.shape[0])
+        #fv = Vcontutil.numpyVstack(fv_pos, fv_neg)
+        #label = Vcontutil.numpyHstack(label_pos, label_neg)
+        #acc = linear_pred(fv, label, svm)
+        #accuracy = np.array(acc)
+
+        svm.save_model(cla_path + name + '_' + str(i) + '_' + '.model')	
+	#svm.save_model('/home/Hao/Work/cla/')
+	#if not os.path.isdir(cla_path + 'acc/'):
+	#	subprocess.call('mkdir ' + cla_path + 'acc/', shell = True)
+	#np.save(cla_path + 'acc/' + name + '_' + str(i) + '_accuracy', accuracy)
+
+def get_score(fvs, model):
+	a = np.ones(len(fvs))
+	a.shape = len(fvs), 1
+	fvs = Vcontutil.numpyHstack(a, fvs)
+	scores = np.dot(fvs, model.T)
+	return scores
+
+'''
+### Fisher Vector Verification
+#mid_set = np.load('/home/Hao/Work/Cmts/hmdb_training_set.npy')
+f = open('/home/Hao/Work/mid_list.txt', 'r')
+video_list = get_video_list(f, video_list)
+dirs = '/media/Hao/My Book/mid_total_fv/'
+dirs = '/home/Hao/Work/fv/'
+fv_mid_total = np.load('/home/Hao/Work/mid_total_fv.npy')
+for i in xrange(len(video_list)):
+	print 'testing case ' + str(i) + ': ' + str(video_list[i][18:])
+	path = dirs + video_list[i][18:]
+	fv = np.load(path)
+	error = fv - fv_mid_total[i]
+print sum(error)
+### Score Evaluation
+#fv_mid_total = np.load('/home/Hao/Work/fv_3_21/mid_total_fv.npy')
+#all_model = np.load('/home/Hao/Work/cla/all_model.npy')
+#scores = get_score(fv_mid_total, all_model)
+#np.save('/home/Hao/Work/mid_total_scores', scores)
+#sys.exit()
+'''
+'''
+## Verification
+mid_total_scores = np.load('/home/Hao/Work/mid_total_scores.npy')
+mid_testing_set = np.load('/home/Hao/Work/mid_testing_set.npy')
+group_total = np.load('/home/Hao/Work/500_group_selection.npy')
+tfidf_bow = np.load('/home/Hao/Work/Cmts/tfidf_bow.npy')
+idf = np.load('/home/Hao/Work/Cmts/mid_idf.npy')
+acc = 0
+for i in xrange(len(mid_testing_set)):
+	print 'testing case ' + str(i) + ': ' + str(mid_testing_set[i])
+	tfidf_target = get_tfidf(tfidf_bow, [mid_testing_set[i]], 10)
+	scores = mid_total_scores[mid_testing_set[i]]
+	for j in xrange(len(group_total)):
+		if str(mid_testing_set[i]) in group_total[j]:
+			group = group_total[j]
+			tfidf_pred = get_tfidf(tfidf_bow, group[1:], 10)
+			break
+	ten_target = heapq.nlargest(10, enumerate(tfidf_target), key=lambda x:x[1]) 
+	ten_pred = heapq.nlargest(10, enumerate(tfidf_pred), key=lambda x:x[1])
+	print ten_target
+	print ten_pred
+	count = 0
+	for j in xrange(len(ten_target)):
+		if ten_target[j][0] in ten_pred[:][0]:
+			count += 1
+	acc += count / 10.
+	print 'acc :' + str(count / 10.)
+acc /= len(mid_testing_set)	
+print acc
+'''
+#f = open('/home/Hao/Work/mid_list.txt', 'r')
+#video_list = get_video_list(f, video_list)
+#index = np.delete(range(len(video_list)), mid_set)
+#video_list = np.delete(video_list, index)
+#input_list = []
+#for i in video_list:
+#        input_list.append('/home/Hao/Work/hmdb_features_fix360/' + i[18 : -4])
+
+
+'''
 ### mid video set extracting
 ## Load Cluster by seeds seletion
-clu_path = '/home/Hao/Work/Cmts/cmt_clu3.txt'
+clu_path = '/home/Hao/Work/Cmts/cmt_clu4.txt'
 clu_file = open(clu_path, 'r')
 cluster_temp = clu_file.read()
 cluster = cluster_temp.split('\n')
@@ -448,22 +694,47 @@ cluster = cluster_temp.split('\n')
 cla_path = '/home/Hao/Work/cla/'
 
 ## Get Cluster Group
-clu_group = get_clu(cluster[0 : len(cluster) - 2], cla_path)
+clu_group = get_clu(cluster, cla_path)
+
 ## Get tfidf count
-tfidf_count = np.load('/home/Hao/Work/Cmts/tfidf_count.npy')
+tfidf_bow = np.load('/home/Hao/Work/Cmts/tfidf_bow.npy')
+tfidf_count= np.load('/home/Hao/Work/Cmts/tfidf_count.npy')
 idf = np.load('/home/Hao/Work/Cmts/mid_idf.npy')
 
 ## Get group data [name, length, mP, entropy]
 #group_data = np.load('/home/Hao/Work/group_data.npy')
-clu_group = np.load('/home/Hao/Work/group_expand.npy')
-remove = []
-for i in range(len(clu_group)):
-	if len(clu_group[i]) < 6:
-		remove.append(i)
-clu_group = np.delete(clu_group, remove)
-D =  Load_mAP(clu_group)
-#np.save('/home/Hao/Work/group_data', D)
+#clu_group = np.load('/home/Hao/Work/group_expand.npy')
+#remove = []
+#for i in range(len(clu_group)):
+#	if len(clu_group[i]) < 6:
+#		remove.append(i)
+#clu_group = np.delete(clu_group, remove)
+test_set = np.load('/home/Hao/Work/mid_testing_set.npy')
+test_set = np.sort(test_set)
 
+[D, group_top_term] = Load_mAP(clu_group)
+np.save('/home/Hao/Work/debug/group_CHISQR_10_top_term', group_top_term)
+
+group_top_term = np.load('/home/Hao/Work/debug/group_CHISQR_10_top_term.npy')
+acc_max = []
+len_group = []
+for i in xrange(len(test_set)):
+	test_top_term = get_tfidf(tfidf_bow, [test_set[i]], 10)
+	test_top_term = get_tuple_index(test_top_term)
+	acc_group = []
+	for j in xrange(len(clu_group)):
+		if str(i) in clu_group[j]:
+			acc = 0
+			for k in test_top_term:
+				if k in group_top_term[j]:
+					acc += 1. / 10
+			acc_group.append(acc)
+	acc_max.append(max(acc_group))
+	len_group.append(len(clu_group[acc_group.index(acc_max[-1])]))
+	print 'case ' + str(i + 1) + ': acc ' + str(acc_max[-1]) + ', size ' + str(len_group[-1])
+np.save('/home/Hao/Work/debug/test_group_CHISQR_10_term_acc', [acc_max, len_group])
+'''		
+'''
 ## Expanse group
 term_acc = get_number_info_from_group_data(group_data, 2)
 term_acc_index = np.where(term_acc >= 0.35)[0]
@@ -507,8 +778,9 @@ saved = np.load('/home/Hao/Work/Cmts/hmdb_seeds.npy')
 fv_hmdb = convert_index2fv(saved, fv_hmdb)
 np.save('/home/Hao/Work/hmdb_half_fv', fv_hmdb)
 sys.exit()
-'''
 
+'''
+'''
 ### Linear SVM learning
 ## Get mid file sort
 file_path = '/home/Hao/Work/viral_data/mid_cmts/bow/sel/selK5_T5.pkl'
@@ -550,9 +822,11 @@ testing_set = np.load('/home/Hao/Work/mid_testing_set.npy')
 #testing_set = np.array(testing_set, np.str)
 
 training_group = []
-for i in clu_group[:335]:
+xx = 0
+for i in clu_group:
 	#name = '_' + i[0][:-16]
-	temp = [i[0]]
+	temp = [i[0], xx]
+	xx += 1
 	#temp = []
 	for j in i[1:]:
 		if not int(j) in testing_set:
@@ -594,14 +868,24 @@ for i in clu_group[:335]:
 #fv_mid = np.load('/home/Hao/Work/mid_total_fv.npy')
 #fv_hmdb = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
 
-fv_mid_training = np.load('/home/Hao/Work/mid_training_fv.npy')
-fv_mid_testing = np.load('/home/Hao/Work/mid_testing_fv.npy')
-fv_hmdb_training = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
-fv_hmdb_testing = np.load('/home/Hao/Work/hmdb_testing_fv.npy')
+#fv_mid_training = np.load('/home/Hao/Work/fv_3_21/mid_training_fv.npy')
+#fv_mid_testing = np.load('/home/Hao/Work/fv_3_21/mid_testing_fv.npy')
+fv_mid_total = np.load('/home/Hao/Work/fv_3_21/mid_total_fv.npy')
+#fv_hmdb_training = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
+fv_hmdb_training = np.load('/home/Hao/Work/fv_3_21/hmdb_training_fv.npy')
+fv_hmdb_testing = np.load('/home/Hao/Work/fv_3_21/hmdb_testing_fv.npy')
 
-#train_term(clu_group[1])
-p = Pool(2)
-p.map(train_term, training_group[:335])
+#for i in training_group:
+#	if len(i) == 1:
+#		print i
+#print training_group
+#train_term(training_group[0])
+#for i in range(len(training_group)):
+#	train_term(teaining_group[i],i)
+#print len(training_group)
+#train_term(training_group[0])
+p = Pool(4)
+p.map(train_term, training_group)
 #cross_validation(clu_group[1])
 #sys.exit()
 #p = Pool(2)
@@ -616,7 +900,7 @@ p.map(train_term, training_group[:335])
 #p = Pool(4)
 #p.map(cross_validation, clu_group)
 #cross_validation(clu_group[0])
-
+'''
 '''
 ### term accuracy & mean precision & coverage compute, testing group selection
 clu_group = np.load('/home/Hao/Work/group_expand.npy')
@@ -626,6 +910,7 @@ fv_mid = np.load('/home/Hao/Work/mid_total_fv.npy')
 fv_hmdb = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
 label_neg = np.zeros(len(fv_hmdb))
 
+tfidf_bow = np.load('/home/Hao/Work/bowtfidf_bow.npy')
 tfidf_count = np.load('/home/Hao/Work/Cmts/tfidf_count.npy')
 idf = np.load('/home/Hao/Work/Cmts/mid_idf.npy')
 
@@ -677,34 +962,57 @@ print len(index)
 index = np.array(index, dtype = np.int)
 delete_index = np.delete(range(len(mp)), index)
 clu_save = np.delete(clu_group, delete_index)
-np.save('/home/Hao/Work/500_group_selection', clu_save)
+#np.save('/home/Hao/Work/500_group_selection', clu_save)
 
 lucky = []
-for i in range(200):
+while len(lucky) < 200:
 	mylist = []
 	for j in index:
 		for k in range(len(clu_group[j])):
 			if k == 0 or clu_group[j][k] in lucky:
 				continue
-			mylist += [clu_group[j][k]]
+			mylist += [clu_group[j][k]] * len(clu_group[j])
 	lucky.append(random.choice(mylist))
+	for j in index:
+		temp = list(clu_group[j])
+		for k in lucky:
+			if k in temp:
+				temp.remove(k)
+		if len(temp) == 1:
+			lucky.remove(lucky[-1])
+			break
 	print lucky[-1]
 testing_group = np.array(lucky, dtype = np.int)
 training_group = np.delete(range(mid_numbers), testing_group)
 print len(training_group), len(testing_group)
-np.save('/home/Hao/Work/mid_testing_set', testing_group)
-np.save('/home/Hao/Work/mid_training_set', training_group)
+#np.save('/home/Hao/Work/mid_testing_set', testing_group)
+#np.save('/home/Hao/Work/mid_training_set', training_group)
+
+#clu_group = np.load('/home/Hao/Work/500_group_selection.npy')
 con = np.zeros(mid_numbers)
-for i in index:
-	xx = clu_group[i]
-	for j in xx[1:]:
+for i in clu_save:
+	xx = i[1:]
+	for j in xx:
 		con[int(j)] = 1
-xx = 0
-for i in con:
-	if i == 1:
-		xx += 1
-converage = float(xx) / mid_numbers
-print converage
+converage = np.mean(con)
+print 'total coverage: ' + str(converage)
+
+testing_group = np.load('/home/Hao/Work/mid_testing_set.npy')
+training_group2 = []
+for i in xrange(len(con)):
+	if con[i] == 1 and i not in testing_group:
+		training_group2.append(i)
+training_group2 = np.array(training_group2)
+print 'training set coverage: ' + str(float(len(training_group2)) / 642)
+#np.save('/home/Hao/Work/mid_training_set2', training_group2)
+
+con = np.zeros(len(clu_group))
+for i in range(len(clu_group)):
+        for j in clu_group[i][1:]:
+                if int(j) in testing_group:
+                        con[i] = 1
+                        break
+print 'group coverage: ' + str(np.mean(con))
 '''
 '''
 ## merge different training computer results
@@ -808,26 +1116,94 @@ p.map(mid_features, video_list)
 '''
 '''
 ### Gmm model training
-f = open('/home/al-farabi/Desktop/hmdb_list.txt', 'r')
+hmdb_set = np.load('/home/Hao/Work/Cmts/hmdb_training_set.npy')
+f = open('/home/Hao/Work/hmdb_list.txt', 'r')
 video_list = get_video_list(f, video_list)
-Features = get_features(video_list[:], 38)
-print Features.shape
-f = open('/home/al-farabi/Desktop/mid_list.txt', 'r')
+index = np.delete(range(len(video_list)), hmdb_set[0:2700])
+video_list = np.delete(video_list, index)
+input_list = []
+for i in video_list:
+	input_list.append('/home/Hao/Work/hmdb_features_fix360/' + i[18 : -4])
+#size = check_features_size(input_list)
+#np.save('/home/Hao/Work/hmdb_training_ft_size', size)
+Features = get_features(input_list, 679)
+#print Features.shape
+
+mid_set = np.load('/home/Hao/Work/mid_training_set.npy')
+f = open('/home/Hao/Work/mid_list.txt', 'r')
 video_list = []
 video_list = get_video_list(f, video_list)
-Features = Vcontutil.numpyVstack(Features, get_features(video_list[:], 913))
-print Features.shape
+index = np.delete(range(len(video_list)), mid_set)
+video_list = np.delete(video_list, index)
+input_list = []
+for i in video_list:
+        input_list.append('/media/Hao/My Book/mid_features_fix360/' + i[18 : -4])
+#size = check_features_size(input_list)
+#np.save('/home/Hao/Work/mid_training_ft_size', size)
+Features = Vcontutil.numpyVstack(Features, get_features(input_list, 22842))
+
+raw_set = np.load('/home/Hao/Work/raw_training_set.npy')
+f = open('/home/Hao/Work/match_list.txt', 'r')
+video_list = []
+video_list = get_video_list(f, video_list)
+index = np.delete(range(len(video_list)), mid_set)
+video_list = np.delete(video_list, index)
+input_list = []
+for i in video_list:
+        input_list.append('/media/Hao/My Book/raw_features/' + i[32:])
+#[Features, time_stamp] = Vcontutil.Load_Raw_Features(input_list[-1], 0)
+#print Features[0]
+#print time_stamp
+#print Features.shape
+#print time_stamp.shape
+size = check_features_size(input_list, 0, 1)
+np.save('/home/Hao/Work/raw_training_ft_size', size)
+[fv_temp, garbage] = get_features(input_list, 12180, 1)
+Features = Vcontutil.numpyVstack(Features, fv_temp)
+#print Features.shape
+gmm_path = '/home/Hao/Work/gmm/'
 mid_gmm(Features, gmm_path, 256, 4)
 '''
 
-'''
+
 ### Fisher Vector encoding
-gmm = Vcont.gmm_model(np.load('/home/al-farabi/Desktop/fv/gmm.npz'))
-f = open('/home/al-farabi/Desktop/hmdb_list.txt', 'r')
-gmm_path = '/home/al-farabi/Desktop/nfv/'
+gmm = Vcont.gmm_model(np.load('/home/Hao/Work/gmm/gmm.npz'))
+#hmdb_set = np.load('/home/Hao/Work/Cmts/hmdb_testing_set.npy')
+#hmdb_set = Vcontutil.numpyHstack(hmdb_set, np.load('/home/Hao/Work/Cmts/hmdb_training_set.npy'))
+f = open('/home/Hao/Work/match_list.txt', 'r')
 video_list = get_video_list(f, video_list)
+#index = np.delete(range(len(video_list)), hmdb_set)
+#video_list = np.delete(video_list, index)
+matching_path = '/media/Hao/My Book/raw/'
+input_list = []
+for i in range(len(video_list)):
+        input_list.append([i, '/media/Hao/My Book' + video_list[i][18:]])
+gmm_path = '/media/Hao/My Book/debug'
+fisherGN_rank(input_list[3])
+#p = Pool(5)
+#p.map(fisherGN_rank, input_list)
+
+'''
+mid_set = np.load('/home/Hao/Work/Cmts/hmdb_training_set.npy')
+f = open('/home/Hao/Work/hmdb_list.txt', 'r')
+video_list = []
+video_list = get_video_list(f, video_list)
+index = np.delete(range(len(video_list)), mid_set)
+video_list = np.delete(video_list, index)
+input_list = []
+for i in video_list:
+        input_list.append('/home/Hao/Work/hmdb_features_fix360/' + i[18 : -4])
+
+gmm_path = '/media/Hao/My Book/hmdb_training_fv'
 p = Pool(4)
-p.map(fisherGN, video_list)
+p.map(fisherGN, input_list)
+'''
+'''
+#f = open('/home/al-farabi/Desktop/hmdb_list.txt', 'r')
+gmm_path = '/media/Hao/My Book/hmdb_testing_fv'
+#video_list = get_video_list(f, video_list)
+p = Pool(4)
+p.map(fisherGN, input_list)
 
 gmm = Vcont.gmm_model(np.load('/home/al-farabi/Desktop/fv/gmm.npz'))
 f = open('/home/al-farabi/Desktop/mid_list.txt', 'r')
