@@ -157,105 +157,44 @@ def fisherGN_rank(inp, step = 5, overlap = 2, fps = 25):
         ele = inp[1]
         temp = ele.split('/')
         name = temp[len(temp) - 1]
-        if 1:
-                print name + ' go go !!'
-		[Feature, time_stamp] = Vcontutil.Load_Raw_Features(ele, 0)
-                Feature = 0
-                end = int(time_stamp[len(time_stamp) - 1])
-                end = (((end - 125) / 50) + 1) * 50
+        print name + ' go go !!'
+	[Feature, time_stamp] = Vcontutil.Load_Raw_Features(ele, 0)
+        Feature = 0
+        f = open(matching_path + name + '/matching_frame' + name + '.txt','r')
+        n = 0
+        s = 0
+        e = 0
+        for line in f:
+                n += 1
+                if n == 3:
+                        s = int(line[11 : len(line)])
+                elif n == 4:
+                        e = int(line[9 : len(line)])
+        if n < 3:
+                return
 
-                f = open(matching_path + name + '/matching_frame' + name + '.txt','r')
-                n = 0
-                s = 0
-                e = 0
-                for line in f:
-                        n += 1
-                        if n == 3:
-                                s = int(line[11 : len(line)])
-                        elif n == 4:
-                                e = int(line[9 : len(line)])
-                if n < 3:
-                        return
-
-                hi = []
-                delete = []
-                boundary = []
-                lower = ((s / 50) + 1 ) * 50
-                uper = (e / 50) * 50 + 25
-                if (uper - lower) >= 125:
-                        xx = lower
-                        while 1:
-                                if (xx + 125) > e:
-                                        break
-                                hi.append(xx)
-                                delete.append(xx / 50)
-                                xx += 50
-                        xx = lower - 100
-                        while 1:
-                                if xx > e:
-                                        break
-                                if xx >= 0 and not xx in hi and xx <= end:
-                                        delete.append(xx / 50)
-                                        boundary.append(xx)
-                                xx += 50
-                if hi == []:
-                        delete = []
-                        xx = lower - 100
-                        hi.append(xx)
-                        if xx >=0 and xx <= end:
-                                delete.append(xx / 50)
-                        sili = abs(s - xx)
-                        while 1:
-                                xx += 50
-                                if xx > e:
-                                        break
-                                if xx >= 0:
-                                        if abs(s - xx) < sili:
-                                                sili = abs(s - xx)
-                                                if hi[0] >= 0 and hi[0] <= end:
-                                                        delete.append(hi[0] / 50)
-                                                        boundary.append(hi[0])
-                                                hi[0] = xx
-                                        else:
-                                                if xx <= end:
-                                                        delete.append(xx / 50)
-                                                        boundary.append(xx)
-
-                delete = np.array(delete)
-                nonhi = np.array(range((end / 50) + 1)) * 50
-                nonhi = np.delete(nonhi, delete)
-
-                hi = np.array(hi)
-                delete = np.array(delete)
-                nonhi = np.array(range((end / 50) + 1)) * 50
-                nonhi = np.delete(nonhi, delete)
-                if len(nonhi) == 0:
-                        nonhi = np.array(boundary)
-                fv = []
-                label = []
-                q = []
-                for i in hi:
-                        print 'highlight ' + str(i / 50)
-                        bye = np.where(np.where(time_stamp <= i)[0] > (i + 125))[0]
-                        D = Vcontutil.Load_timming_Features(ele, i, 125)
-                        fv.append(Vcontutil.fisher_vector_rank(D, gmm))
-                        label.append(1)
-                        q.append(Q)
-                for i in nonhi:
-                        print 'non-highlight ' + str(i / 50)
-                        bye = np.where(np.where(time_stamp <= i)[0] > (i + 125))[0]
-                        D = Vcontutil.Load_timming_Features(ele, i, 125)
-                        if len(D) == 0:
-                                continue
-                        fv.append(Vcontutil.fisher_vector_rank(D, gmm))
-                        label.append(0)
-                        q.append(Q)
-                fv = np.array(fv)
-                label = np.array(label)
-                q = np.array(q)
-                np.savez(gmm_path + '/' + name, fv = fv, label = label, q = q)
-        else:
-                print name + '.npy already exist!'
+        frame_over = overlap * fps
+        frame_length = step * fps
+        hi = []
+        nohi = []
+        boundary = []
+        end = time_stamp[-1]
+        num_of_interval = int(end - (frame_length - frame_over)) / frame_over
+        for i in xrange(num_of_interval):
+            if (i * frame_over) + frame_length < s or (i * frame_over) > e:
+                nohi.append(i)
+            elif (i * frame_over) + frame_length < e and (i * frame_over) > s:
+                hi.append(i)
+            else:
+                boundary.append(i)
+        if len(hi) == 0:
+            area = np.zeros(len(boundary))
+            for i in xrange(len(boundary)):
+                if s - (boundary[i] * frame_over) > 0 and s - (boundary[i] * frame_over) < 25:
+                    hi.append(boundary[i])
+                elif s - (boundary[i] * frame_over) < 0 and s - (boundary[i] * frame_over) < -25:
+                    hi.append(boundary[i])
+        return [hi, nohi, boundary]
 
 def fisherGN_Raw(ele):
         temp = ele.split('/')
@@ -1170,19 +1109,19 @@ mid_gmm(Features, gmm_path, 256, 4)
 gmm = Vcont.gmm_model(np.load('/home/Hao/Work/gmm/gmm.npz'))
 #hmdb_set = np.load('/home/Hao/Work/Cmts/hmdb_testing_set.npy')
 #hmdb_set = Vcontutil.numpyHstack(hmdb_set, np.load('/home/Hao/Work/Cmts/hmdb_training_set.npy'))
-f = open('/home/Hao/Work/match_list.txt', 'r')
+f = open('/home/Hao/Work/debug/match_list.txt', 'r')
 video_list = get_video_list(f, video_list)
 #index = np.delete(range(len(video_list)), hmdb_set)
 #video_list = np.delete(video_list, index)
 matching_path = '/media/Hao/My Book/raw/'
 input_list = []
 for i in range(len(video_list)):
-        input_list.append([i, '/media/Hao/My Book' + video_list[i][18:]])
+        #input_list.append([i, '/media/Hao/My Book' + video_list[i][18:]])
+        input_list.append([i, '/media/Hao/My Book/raw_features/' + video_list[i]])
 gmm_path = '/media/Hao/My Book/debug'
-fisherGN_rank(input_list[3])
-#p = Pool(5)
-#p.map(fisherGN_rank, input_list)
-
+p = Pool(2)
+rank_interval = p.map(fisherGN_rank, input_list)
+np.save('/media/Hao/My Book/debug/rank_interval', rank_interval)
 '''
 mid_set = np.load('/home/Hao/Work/Cmts/hmdb_training_set.npy')
 f = open('/home/Hao/Work/hmdb_list.txt', 'r')
