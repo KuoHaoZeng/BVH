@@ -72,15 +72,15 @@ def video_edit(text):
 	ele = temp[0]
 	target = folder + ele + '/' + ele + '.mp4'
         jukin = folder + ele + '/jukin' + ele + '.mp4'
-	
+
 	if os.path.isfile(jukin):
 		return
-	
+
 	start = temp[1]
 	end = temp[2]
 	if not os.path.isfile(jukin):
 		subprocess.call('sudo mv ' + target + ' ' + jukin, shell = True)
-	
+
 	ffmpeg_duration(jukin, target, start, end)
 	print 'done!!'
 
@@ -152,14 +152,16 @@ def fisherGN(ele):
         else:
                 print name + '.npy already exist!'
 
-def fisherGN_rank(inp, step = 5, overlap = 2, fps = 25):
+def fisherGN_rank(inp, step = 3, overlap = 1, fps = 25):
         Q = inp[0]
         ele = inp[1]
         temp = ele.split('/')
         name = temp[len(temp) - 1]
         print name + ' go go !!'
-	[Feature, time_stamp] = Vcontutil.Load_Raw_Features(ele, 0)
-        Feature = 0
+        if os.path.isfile(fv_path + name + '.npz'):
+            print 'done'
+            #return ['done']
+        [Feature, time_stamp] = Vcontutil.Load_Raw_Features(ele, 0)
         f = open(matching_path + name + '/matching_frame' + name + '.txt','r')
         n = 0
         s = 0
@@ -187,14 +189,95 @@ def fisherGN_rank(inp, step = 5, overlap = 2, fps = 25):
                 hi.append(i)
             else:
                 boundary.append(i)
-        if len(hi) == 0:
+
+        th = -0.5
+        while len(hi) == 0:
+            th += 0.5
+            if th > 300:
+                return [hi, nohi, boundary]
             area = np.zeros(len(boundary))
+            boundary_tmp = list(boundary)
             for i in xrange(len(boundary)):
-                if s - (boundary[i] * frame_over) > 0 and s - (boundary[i] * frame_over) < 25:
-                    hi.append(boundary[i])
-                elif s - (boundary[i] * frame_over) < 0 and s - (boundary[i] * frame_over) < -25:
-                    hi.append(boundary[i])
-        return [hi, nohi, boundary]
+                if s - (boundary_tmp[i] * frame_over) > 0 and s - (boundary_tmp[i] * frame_over) < th * fps:
+                    hi.append(boundary_tmp[i])
+                    boundary.remove(boundary_tmp[i])
+                elif s - (boundary_tmp[i] * frame_over) < 0 and s - (boundary_tmp[i] * frame_over) < - th * fps:
+                    hi.append(boundary_tmp[i])
+                    boundary.remove(boundary_tmp[i])
+
+        th = -0.5
+        while len(nohi) == 0:
+            th += 0.5
+            if th > 300:
+                return [hi, nohi, boundary]
+            area = np.zeros(len(boundary))
+            boundary_tmp = list(boundary)
+            for i in xrange(len(boundary)):
+                if s - (boundary_tmp[i] * frame_over) > 0 and s - (boundary_tmp[i] * frame_over) > (step - th) * fps:
+                    nohi.append(boundary_tmp[i])
+                    boundary.remove(boundary_tmp[i])
+                elif s - (boundary_tmp[i] * frame_over) < 0 and s - (boundary_tmp[i] * frame_over) > -(step - th) * fps:
+                    nohi.append(boundary_tmp[i])
+                    boundary.remove(boundary_tmp[i])
+        '''
+        empty = []
+        hi_tmp = list(hi)
+        for ele in hi_tmp:
+            greater = np.greater_equal(time_stamp, ele * frame_over)
+            less = np.less_equal(time_stamp, ele * frame_over + frame_length)
+            interval = np.equal(greater, less)
+            if len(np.where(interval == True)[0]) == 0:
+                hi.remove(ele)
+                empty.append(ele)
+        nohi_tmp = list(nohi)
+        for ele in nohi_tmp:
+            greater = np.greater_equal(time_stamp, ele * frame_over)
+            less = np.less_equal(time_stamp, ele * frame_over + frame_length)
+            interval = np.equal(greater, less)
+            if len(np.where(interval == True)[0]) == 0:
+                nohi.remove(ele)
+                empty.append(ele)
+        return [hi, nohi, boundary, empty]
+        '''
+        fv = []
+        label = []
+        q = []
+        empty = []
+        hi_tmp = list(hi)
+        for ele in hi_tmp:
+            greater = np.greater_equal(time_stamp, ele * frame_over)
+            less = np.less_equal(time_stamp, ele * frame_over + frame_length)
+            interval = np.equal(greater, less)
+            interval1 = np.where(interval == False)[0]
+            interval2 = np.where(interval == True)[0]
+            if len(interval2) == 0:
+                hi.remove(ele)
+                empty.append(ele)
+            else:
+                D = np.delete(Feature, interval1, axis = 0)
+                fv.append(Vcontutil.fisher_vector_rank(D, gmm))
+                label.append(1)
+                q.append(Q)
+
+        nohi_tmp = list(nohi)
+        for ele in nohi_tmp:
+            greater = np.greater_equal(time_stamp, ele * frame_over)
+            less = np.less_equal(time_stamp, ele * frame_over + frame_length)
+            interval = np.equal(greater, less)
+            interval1 = np.where(interval == False)[0]
+            interval2 = np.where(interval == True)[0]
+            if len(interval2) == 0:
+                nohi.remove(ele)
+                empty.append(ele)
+            else:
+                D = np.delete(Feature, interval1, axis = 0)
+                fv.append(Vcontutil.fisher_vector_rank(D, gmm))
+                label.append(0)
+                q.append(Q)
+
+        print [hi, nohi, boundary, empty]
+        np.savez(fv_path + name, fv = fv, label = label, q = q)
+        return [hi, nohi, boundary, empty]
 
 def fisherGN_Raw(ele):
         temp = ele.split('/')
@@ -235,7 +318,7 @@ def linear_pred(fv, Label, svm):
 	ap = 0
 	while num < num_pos:
 		if Label[np.where(y == ys[len(ys) - i])[0][0]] > 0:
-			num += 1 
+			num += 1
 			ap += float(num) / (i * num_pos)
 		i += 1
 	acc_pos = 1 - float(error_pos) / num_pos
@@ -412,7 +495,7 @@ def get_tfidf(tfidf, group, K, method = 0): #method = 0: top 10 of top 10, metho
 		else:
 			bow += tfidf[ele]
 
-	top_terms = heapq.nlargest(K, enumerate(bow), key=lambda x:x[1])	
+	top_terms = heapq.nlargest(K, enumerate(bow), key=lambda x:x[1])
 	return top_terms
 
 def compute_entropy(bow):
@@ -548,7 +631,7 @@ def train_term(cluster):
         #acc = linear_pred(fv, label, svm)
         #accuracy = np.array(acc)
 
-        svm.save_model(cla_path + name + '_' + str(i) + '_' + '.model')	
+        svm.save_model(cla_path + name + '_' + str(i) + '_' + '.model')
 	#svm.save_model('/home/Hao/Work/cla/')
 	#if not os.path.isdir(cla_path + 'acc/'):
 	#	subprocess.call('mkdir ' + cla_path + 'acc/', shell = True)
@@ -560,6 +643,19 @@ def get_score(fvs, model):
 	fvs = Vcontutil.numpyHstack(a, fvs)
 	scores = np.dot(fvs, model.T)
 	return scores
+'''
+f = open('/home/Hao/Work/match_list.txt', 'r')
+video_list = get_video_list(f, video_list)
+raw_test = np.load('/home/Hao/Work/raw_testing_set.npy')
+raw_test2 = np.load('/home/Hao/Work/Cmts/raw/raw_testing_set2_4_7.npy')
+video = []
+fw = open('/home/Hao/Work/raw_check_list2_4_9.txt', 'w')
+for i in xrange(len(video_list)):
+    if i in raw_test2 and i not in raw_test:
+        video.append([video_list[i][33:], i])
+        fw.write(video_list[i][33:] + '  ' + str(i) + '\n')
+        print video[-1]
+'''
 
 '''
 ### Fisher Vector Verification
@@ -599,7 +695,7 @@ for i in xrange(len(mid_testing_set)):
 			group = group_total[j]
 			tfidf_pred = get_tfidf(tfidf_bow, group[1:], 10)
 			break
-	ten_target = heapq.nlargest(10, enumerate(tfidf_target), key=lambda x:x[1]) 
+	ten_target = heapq.nlargest(10, enumerate(tfidf_target), key=lambda x:x[1])
 	ten_pred = heapq.nlargest(10, enumerate(tfidf_pred), key=lambda x:x[1])
 	print ten_target
 	print ten_pred
@@ -609,7 +705,7 @@ for i in xrange(len(mid_testing_set)):
 			count += 1
 	acc += count / 10.
 	print 'acc :' + str(count / 10.)
-acc /= len(mid_testing_set)	
+acc /= len(mid_testing_set)
 print acc
 '''
 #f = open('/home/Hao/Work/mid_list.txt', 'r')
@@ -672,7 +768,7 @@ for i in xrange(len(test_set)):
 	len_group.append(len(clu_group[acc_group.index(acc_max[-1])]))
 	print 'case ' + str(i + 1) + ': acc ' + str(acc_max[-1]) + ', size ' + str(len_group[-1])
 np.save('/home/Hao/Work/debug/test_group_CHISQR_10_term_acc', [acc_max, len_group])
-'''		
+'''
 '''
 ## Expanse group
 term_acc = get_number_info_from_group_data(group_data, 2)
@@ -963,13 +1059,13 @@ cla_path2 = '/home/Hao/Work/cla_lab_3_15/'
 group_acc = []
 group_pre = []
 xx = 0
-yy = 0 
+yy = 0
 zz = 0
 for i in clu_group:
 	name = get_seed_name(i[0])
 	if os.path.isfile(cla_path + name + '/' + name + '_' + str(len(i)) + '_accuracy.npy') == False:
 		xx += 1
-		
+
 		if os.path.isfile(cla_path0 + name + '/' + name + '_' + str(len(i)) + '_accuracy.npy') == True:
 			xx += 1
 			group_acc.append(i)
@@ -985,7 +1081,7 @@ for i in clu_group:
                 	group_acc.append(i)
                 	subprocess.call('cp -r ' + cla_path2 + name + '/ ' + cla_path + name + '/',shell = True)
                 	continue
-		
+
 	#temp = np.load(cla_path + name + '/' + name + '_' + str(len(i)) + '_accuracy.npy')
 	#print temp
 	#group_acc.append(float(sum(temp[:, 0])) / len(temp))
@@ -1004,7 +1100,7 @@ for i in range(xx):
 	if i < 1:
 		print acc_sort[i], len(clu_group[index_temp]), clu_group[index_temp]
 ls = np.array(length)
-ta = np.array(acc_sort) 
+ta = np.array(acc_sort)
 np.savez('/home/Hao/Work/plot', l = ls, ta = ta)
 sys.exit()
 
@@ -1085,7 +1181,7 @@ raw_set = np.load('/home/Hao/Work/raw_training_set.npy')
 f = open('/home/Hao/Work/match_list.txt', 'r')
 video_list = []
 video_list = get_video_list(f, video_list)
-index = np.delete(range(len(video_list)), mid_set)
+index = np.delete(range(len(video_list)), raw_set)
 video_list = np.delete(video_list, index)
 input_list = []
 for i in video_list:
@@ -1104,24 +1200,36 @@ gmm_path = '/home/Hao/Work/gmm/'
 mid_gmm(Features, gmm_path, 256, 4)
 '''
 
-
 ### Fisher Vector encoding
 gmm = Vcont.gmm_model(np.load('/home/Hao/Work/gmm/gmm.npz'))
 #hmdb_set = np.load('/home/Hao/Work/Cmts/hmdb_testing_set.npy')
 #hmdb_set = Vcontutil.numpyHstack(hmdb_set, np.load('/home/Hao/Work/Cmts/hmdb_training_set.npy'))
-f = open('/home/Hao/Work/debug/match_list.txt', 'r')
+#f = open('/home/Hao/Work/debug/match_list.txt', 'r')
+f = open('/home/Hao/Work/match_list.txt', 'r')
 video_list = get_video_list(f, video_list)
 #index = np.delete(range(len(video_list)), hmdb_set)
 #video_list = np.delete(video_list, index)
 matching_path = '/media/Hao/My Book/raw/'
+#raw_test_set = np.load('/home/Hao/Work/Cmts/raw/raw_testing_set3_4_10.npy')
 input_list = []
 for i in range(len(video_list)):
         #input_list.append([i, '/media/Hao/My Book' + video_list[i][18:]])
         input_list.append([i, '/media/Hao/My Book/raw_features/' + video_list[i]])
-gmm_path = '/media/Hao/My Book/debug'
-p = Pool(2)
+        print input_list[-1]
+#gmm_path = '/media/Hao/My Book/debug'
+fv_path = '/media/Hao/My Book/raw_total_fv_3_1_4_14/'
+'''
+rank_interval = []
+for ele in input_list:
+    #if ele[0] == 282:
+        print ele[1]
+        rank_interval.append(fisherGN_rank(ele))
+        print rank_interval[-1]
+'''
+p = Pool(4)
 rank_interval = p.map(fisherGN_rank, input_list)
-np.save('/media/Hao/My Book/debug/rank_interval', rank_interval)
+#np.save('/media/Hao/My Book/debug/rank_interval', rank_interval)
+
 '''
 mid_set = np.load('/home/Hao/Work/Cmts/hmdb_training_set.npy')
 f = open('/home/Hao/Work/hmdb_list.txt', 'r')

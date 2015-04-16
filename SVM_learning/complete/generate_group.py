@@ -1,14 +1,32 @@
 import numpy as np
 from numpy import linalg
 from scipy import ndimage, signal, stats
+import scipy.spatial.distance as dis
+import scipy.io as sio
 from multiprocessing import Pool
+from sklearn import cluster
 import sys, math, copy, time, cv2, os, heapq, Vcontutil, Vcont, mlpy, random, sklearn.metrics, subprocess
+
+def get_video_list(f):
+        video_list = []
+        for line in f:
+            if len(line) > 1:
+                temp = line[0 : -1]
+                video_list.append(temp)
+            #xx = temp.split('/')
+            #video_names.append(xx[len(xx) - 1])
+        return video_list
 
 def get_tuple_index(arr):
         index = np.zeros(len(arr))
         for i in xrange(len(arr)):
                 index[i] = arr[i][0]
         return index
+
+def get_number_case(seq):
+    seen = set()
+    seen_add = seen.add
+    return [ x for x in seq if not (x in seen or seen_add(x))]
 
 def get_clu(cluster):
         name = []
@@ -358,6 +376,295 @@ def oracle(data):
             term_acc.append(acc(query_top_terms, group_top_terms))
     return ID, max(term_acc)
 
+def grous_extract(ID, groups, mAP):
+    ## ID = id of each group
+    ## groups = all groups
+    ## mAP = mean average precision of each group
+    ## return = extracted ID, extracted groups, extracted mAP
+
+    # set overlapping threshold and initialition
+    threshold = 0.7
+    everybody = np.zeros(842)
+    ID_extract = []
+    groups_extract = []
+    mAP_extract = []
+
+    while 1:
+        mAP = list(mAP)
+        maximum = max(mAP)
+        print maximum
+        idx = mAP.index(maximum)
+        ID_extract.append(ID[idx])
+        groups_extract.append(groups[idx])
+        mAP_extract.append(mAP[idx])
+
+        num = len(ID)
+        overlap = np.zeros(num)
+        for i in xrange(num):
+            tmp = 0
+            for ele in groups[i]:
+                if ele in groups_extract[-1]:
+                #if everybody[ele] == 1:
+                    tmp += 1.
+            #overlap[i] = tmp / (len(groups[i]))
+            overlap[i] = tmp / (len(groups[i]) + len(groups_extract[-1]) - tmp)
+        delete_idx = np.where(overlap >= threshold)[0]
+        #print delete_idx
+        ID = np.delete(ID, delete_idx, axis = 0)
+        groups = np.delete(groups, delete_idx, axis = 0)
+        mAP = np.delete(mAP, delete_idx, axis = 0)
+        #mAP = list(mAP)
+        #if len(ID) < 1:
+        #    break
+
+        #maximum = max(mAP)
+        #print maximum
+        #idx = mAP.index(maximum)
+        #ID_extract.append(ID[idx])
+        #groups_extract.append(groups[idx])
+        #mAP_extract.append(mAP[idx])
+        for ele in groups_extract[-1]:
+            everybody[ele] = 1
+        if float(sum(everybody)) / 842 >= 0.9:
+            break
+    print len(ID_extract)
+    return ID_extract, groups_extract, mAP_extract
+
+def train_SVM_group(data):
+    ## data = [ID, group(ID)]
+    ## return [ID, 3-folder cross-validation mean average precision]
+    ID = data[0]
+    group = list(data[1])
+    print 'seed ID: ' + str(ID)
+
+    ## remove testing data from training set
+    tmp = list(group)
+    for ele in tmp:
+        if ele in test_set:
+            group.remove(ele)
+    path = '/home/Hao/Work/one_features/'
+    if os.path.isfile(path + str(ID) + '_' + str(len(group)) + '.model'):
+        print 'done'
+        #return
+    if len(group) == 0:
+        print group
+        return group
+
+    ## get negative set expan by adding term accuracy = 0 video
+    group_top_terms = get_tfidf(tfidf_bow, group, 10)
+    group_top_terms = get_tuple_index(group_top_terms)
+    neg_expan = []
+    acc_list = []
+    for i in xrange(842):
+        if i not in group:
+            query_top_terms = get_tfidf(tfidf_bow, [i], 10)
+            query_top_terms = get_tuple_index(query_top_terms)
+            if i not in test_set:
+                acc_list.append(acc(query_top_terms, group_top_terms))
+            if acc_list[-1] == 0 and i not in test_set:
+                neg_expan.append(i)
+    calibrate_case = heapq.nlargest(40, enumerate(acc_list), key=lambda x:x[1])
+    calibrate_case = get_tuple_index(calibrate_case)
+    print 'negative data expan size: ' + str(len(neg_expan))
+    #return ID, calibrate_case
+
+    ## prepare fv & label for training linear SVM classifier
+    pos = np.delete(range(842), group)
+    fv_pos = np.delete(fv_mid, pos, axis = 0)
+    neg = np.delete(range(842), neg_expan)
+    fv_neg_mid = np.delete(fv_mid, neg, axis = 0)
+    fv_neg_hmdb = fv_hmdb_train
+    if len(neg_expan) == 0:
+        fv_neg = fv_neg_hmdb
+        print 'seed ID: ' + str(ID) + ' has no mid negative examples!!'
+    else:
+        fv_neg = fv_neg_mid
+    fv_neg = np.vstack((fv_neg_mid, fv_neg_hmdb))
+    label_pos = np.ones(len(fv_pos))
+    label_neg = np.zeros(len(fv_neg))
+    fv = np.vstack((fv_pos, fv_neg))
+    label = np.hstack((label_pos, label_neg))
+
+    ## train & save model
+    svm = Vcontutil.linearSVM_T(fv, label, 10, {0 : 1, 1 : 1})
+    svm.save_model(path + str(ID) + '_' + str(len(group)) + '.model')
+    sys.stdout.flush()
+
+def pred_mid_feature(model_path_list, test_data):
+    SVM = []
+    for ele in model_path_list:
+        SVM_tmp = mlpy.LibLinear.load_model(ele)
+        SVM.append(SVM_tmp._w())
+    SVM = np.array(SVM)
+    bias = np.ones(len(test_data))
+    bias.shape = 1, -1
+    print bias.shape
+    delete_idx = np.delete(range(842), test_data)
+    fv = np.delete(fv_mid, delete_idx, axis = 0)
+    fv = fv.T
+    print fv.shape
+    fv = np.vstack((fv, bias))
+    y = np.dot(SVM, fv)
+    y = y.T
+    return y
+
+def pred_raw_feature(model_path_list, fv):
+    SVM = []
+    for ele in model_path_list:
+        SVM_tmp = mlpy.LibLinear.load_model(ele)
+        SVM.append(SVM_tmp._w())
+    SVM = np.array(SVM)
+    bias = np.ones(len(fv))
+    bias.shape = 1, -1
+    print bias.shape
+    fv = fv.T
+    print fv.shape
+    fv_new = np.vstack((fv, bias))
+    y = np.dot(SVM, fv_new)
+    y = y.T
+    fv = fv.T
+    return y
+
+def pred_ranking_feature(model_path, fv):
+    SVM = []
+    SVM_tmp = np.load(model_path)
+    for ele in SVM_tmp:
+        SVM.append(ele)
+    SVM = np.array(SVM)
+    fv = fv.T
+    print fv.shape
+    y = np.dot(SVM, fv)
+    y = y.T
+    fv = fv.T
+    return y
+
+def mid_eva(model_list, test_data, scores):
+    video = test_data
+    query_top_terms = get_tfidf(tfidf_bow, [video], 10)
+    query_top_terms = get_tuple_index(query_top_terms)
+    scores = list(scores)
+    maximum = max(scores)
+    scores_sort = sorted(scores)
+    group = []
+    for i in xrange(1):
+        #idx = scores.ind`ex(maximum)
+        idx = scores.index(scores_sort[-1 - i])
+        group += model_list[idx][1]
+    group_top_terms = get_tfidf(tfidf_bow, group, 10)
+    group_top_terms = get_tuple_index(group_top_terms)
+    return acc(query_top_terms, group_top_terms)
+
+def Distance(test, train, func):
+    test_num = len(test)
+    train_num = len(train)
+    Dis = np.zeros([test_num, train_num])
+    nn = []
+    for i in xrange(test_num):
+        for j in xrange(train_num):
+            Dis[i][j] = -func(test[i],train[j])
+            if i == j:
+                Dis[i][j] = -sys.maxint
+            #Dis[i][j] = np.linalg.norm(test[i] - train[j])
+            #print Dis[i][j]
+        nn.append(heapq.nlargest(40, enumerate(Dis[i]), key=lambda x:x[1]))
+        print nn[-1]
+    return nn
+
+def e_distance(a, b):
+    return np.linalg.norm(a - b)
+
+def calibrate_prepare(model_path, group):
+    print model_path
+    # positive data
+    pos = np.delete(range(842), group)
+    fv_pos = np.delete(fv_mid, pos, axis = 0)
+    label_pos = np.ones(len(fv_pos))
+    # negative data
+    fv_neg = fv_hmdb_test
+    label_neg = np.zeros(len(fv_neg))
+
+    # stack & bias term
+    fv = np.vstack((fv_pos, fv_neg))
+    bias = np.ones(len(fv))
+    bias.shape = 1, -1
+    fv = fv.T
+    fv = np.vstack((fv, bias))
+    label = np.hstack((label_pos, label_neg))
+
+    # SVM evaluation
+    SVM = mlpy.LibLinear.load_model(model_path)
+    SVM = SVM._w()
+    y = np.dot(SVM, fv)
+    y.shape = -1, fv.shape[1]
+    print y.shape, label.shape
+    return y, label
+
+def calibrate_mapping(param, scores):
+    scores_map = np.zeros(scores.shape)
+    for i in xrange(len(scores)):
+        for j in xrange(len(param)):
+            scores_map[i][j] = 1 / (1 + math.exp(-param[j][0]*(scores[i][j] - param[j][1])))
+            print scores[i][j], scores_map[i][j]
+    return scores_map
+
+def kmeans_train(D, n, ini_iter, max_iter, eps, func):
+    N = 0
+    for ele in D['label']:
+        if ele == 1:
+            N +=1
+    data = np.zeros([N, D['fv'].shape[1]], dtype = np.float32)
+    q = np.zeros(N)
+    xx = 0
+    for i in xrange(len(D['fv'])):
+        if D['label'][i] == 1:
+            data[xx] = D['fv'][i]
+            q[xx] = D['q'][i]
+            xx += 1
+    '''
+    q_case = get_number_case(q)
+    if len(q_case) > 10:
+        idx = np.delete(range(len(q_case)), random.sample(range(len(q_case)), 10))
+        q_case = np.delete(q_case, idx)
+        x_new = []
+        for i in xrange(len(data)):
+            if q in q_case:
+                x_new.append(data[i])
+        D = np.array(x_new)
+    print D.shape
+    sys.exit()
+    '''
+    if func == 'cv2':
+        data = np.array(data, dtype = np.float32)
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, max_iter, eps)
+        ret, label, center = cv2.kmeans(data, n, criteria, ini_iter, cv2.KMEANS_RANDOM_CENTERS)
+        center = [center, label]
+    elif func == 'skl':
+        center = cluster.KMeans(n, 'k-means++', ini_iter, max_iter, eps, 'auto', 1)
+        center.fit(data)
+    return center
+
+def kmeans_pred(D, center, func):
+    q_case = get_number_case(D['q'])
+    n_case = len(q_case)
+    Label = np.zeros(len(D['q']))
+    if func == 'cv2':
+        labels = center[1]
+        idx = 0
+        for i in xrange(len(D['q'])):
+            print 'case: ' + str(i)
+            if D['label'][i] == 1:
+                Label[i] = labels[idx]
+                idx += 1
+            else:
+                Label[i] = -1
+    elif func == 'skl':
+        for i in xrange(len(D['q'])):
+            print 'case: ' + str(i)
+            if D['label'][i] == 1:
+                Label[i] = center.predict(D['fv'][i])
+            else:
+                Label[i] = -1
+    return Label
 ###############################################################################
 
 
@@ -382,31 +689,143 @@ tfidf_bow = np.load('/home/Hao/Work/Cmts/tfidf_bow.npy')
 tfidf_term = np.load('/home/Hao/Work/Cmts/tfidf_term.npy')
 tfidf_list = np.load('/home/Hao/Work/Cmts/tfidf_list.npy')
 
-fv_mid = []
-for ele in tfidf_list:
-    tmp = np.load('/media/Hao/My Book/mid_total_fv/' + ele + '.npy')
-    fv_mid.append(tmp)
-fv_mid = np.array(fv_mid)
+if not os.path.isfile('/home/Hao/Work/Cmts/fv_mid_all.npy'):
+    fv_mid = []
+    for ele in tfidf_list:
+        tmp = np.load('/media/Hao/My Book/mid_total_fv/' + ele + '.npy')
+        fv_mid.append(tmp)
+    fv_mid = np.array(fv_mid)
+    np.save('/home/Hao/Work/Cmts/fv_mid_all', fv_mid)
+else:
+    fv_mid = np.load('/home/Hao/Work/Cmts/fv_mid_all.npy')
 fv_hmdb_train = np.load('/home/Hao/Work/hmdb_0.4_fv.npy')
 fv_hmdb_test = np.load('/home/Hao/Work/hmdb_testing_fv.npy')
 
+fv_raw_test_integral = np.load('/media/Hao/My Book/raw_total_fv/total_testing2_4_7.npz')
+fv_raw_test = fv_raw_test_integral['fv']
+fv_raw_train_integral = np.load('/media/Hao/My Book/raw_total_fv/total_training2_4_7.npz')
+fv_raw_train = fv_raw_train_integral['fv']
 #test = get_greedy_group([0, 0])
 #print test
 #ID = range(842)
 #seeds = range(842)
 #groups = np.load('/home/Hao/Work/Cmts/greedy_group2.npz')
+'''
+groups = np.load('/home/Hao/Work/Cmts/group_level_expan_remove_too_small2.npz')
+in_groups = list(groups['group'])
 groups = np.load('/home/Hao/Work/Cmts/group_level_expan_only_too_small2.npz')
+for ele in groups['group']:
+    if len(ele) > 1:
+        in_groups.append(ele)
+in_ID = []
+in_mAP = []
+mAPs = np.load('/home/Hao/Work/Cmts/mAP_4_3.npy')
+for ele in mAPs:
+    in_ID.append(ele[0])
+    in_mAP.append(ele[1])
+mAPs = np.load('/home/Hao/Work/Cmts/mAP_4_4.npy')
+for ele in mAPs:
+    in_ID.append(ele[0])
+    in_mAP.append(ele[1])
+xx=0
+yy=[]
+for ele in xrange(len(in_mAP)):
+    if in_mAP[ele] == 0:
+        yy.append(len(in_groups[ele]))
+        xx += 1
+print xx, np.mean(yy)
+ALL = grous_extract(in_ID, in_groups, in_mAP)
+'''
 #groups = groups['group']
-level_end = np.load('/home/Hao/Work/Cmts/level_selection2.npz')
+#level_end = np.load('/home/Hao/Work/Cmts/level_selection2.npz')
+#input_list = []
+test_set = np.load('/home/Hao/Work/mid_testing_set.npy')
+train_set = np.load('/home/Hao/Work/mid_training_set.npy')
+'''
+groups = np.load('/home/Hao/Work/Cmts/final_group_4_5.npz')
+calibrate_case = np.load('/home/Hao/Work/Cmts/final_one_not_pos&neg_4_8.npz')
+test_scores_integral = np.load('/home/Hao/Work/Cmts/raw/raw_test_mid_mixed_rep.npz')
+test_scores = test_scores_integral['fv']
+train_scores_integral = np.load('/home/Hao/Work/Cmts/raw/raw_train_mid_mixed_rep.npz')
+train_scores = train_scores_integral['fv']
+par = sio.loadmat('/home/Hao/Work/Cmts/calibrate/par_4_6.mat')
+par = par['par']
+par = sio.loadmat('/home/Hao/Work/Cmts/calibrate/par_one_4_9.mat')
+par_one = par['par']
+'''
+#ALL = calibrate_mapping(par, test_scores)
+#test_scores = np.load('/home/sunmin/smax_test_rep.npy')
+#train_scores = np.load('/home/sunmin/smax_train_rep.npy')
+#train_scores = np.delete(fv_mid, test_set, axis = 0)
+#test_scores = np.delete(fv_mid, train_set, axis = 0)
+#test_scores = np.load('/home/Hao/Work/Cmts/calibrate/test_mid_cal_rep.npy')
+#train_scores = np.load('/home/Hao/Work/Cmts/calibrate/train_mid_cal_rep.npy')
+#ALL = Distance(train_scores, train_scores, dis.cosine)
+'''
+path = '/home/Hao/Work/mid_features/'
+path_one = '/home/Hao/Work/one_features/'
+
+ALL = []
+for i in xrange(len(calibrate_case['ID'])):
+    ALL.append(calibrate_prepare(path_one + str(calibrate_case['ID'][i]) + '_' + \
+                                 #str(len(groups['group'][i])) + '.model', \
+                                 str(1) + '.model', \
+                                 calibrate_case['group'][i][0:10]))
+'''
 input_list = []
-#test_set = np.load('/home/Hao/Work/mid_testing_set.npy')
-items = range(len(groups['ID']))
+'''
+for i in xrange(len(groups['ID'])):
+#for i in xrange(842):
+    #if i not in test_set:
+        #input_list.append([i, calibrate_case['ID'][i], calibrate_case['group'][i][0:10]])
+        input_list.append(path + str(groups['ID'][i]) + '_' + \
+                      str(len(groups['group'][i])) + '.model')
+        #input_list.append(path + str(i) + '_1.model')
+        print input_list[-1]
+
+for i in xrange(842):
+    if i not in test_set:
+        input_list.append(path_one + str(i) + '_' + str(1) + '.model')
+        print input_list[-1]
+#print calibrate_prepare(input_list[0])
+#p = Pool(4)
+#ALL = p.map(calibrate_prepare, input_list)
+#ALL = pred_mid_feature(input_list, train_set)
+ALL = pred_raw_feature(input_list, fv_raw_train)
+'''
+#ALL = []
+'''
+for i in xrange(len(groups['ID'])):
+    input_list.append([groups['ID'][i], groups['group'][i]])
+    print input_list[-1]
+'''
+'''
+for i in xrange(842):
+    if i in test_set:
+        if not os.path.isfile('/home/Hao/Work/one_features/' + str(i) + '_1.model'):
+            input_list.append([i, [i]])
+            print input_list[-1]
+test_set = []
+#train_SVM_group(input_list[0])
+'''
+'''
+for i in xrange(len(train_set)):
+    input_list.append([train_set[i], [train_set[i]]])
+    print input_list[-1]
+#ALL = []
+#for i in xrange((len(test_set))):
+#    ALL.append(mid_eva(input_list, test_set[i], test_scores[i]))
+'''
+#ALL = pred_mid_feature(input_list, test_set)
+#train_SVM_group(input_list[0])
+#p = Pool(4)
+#ALL = p.map(train_SVM_group, input_list)
+#items = range(len(groups['ID']))
 #items = range(len(test_set))
 #random.shuffle(items)
-for i in items:
-    if len(groups['group'][i]) > 1:
-        input_list.append([groups['ID'][i], groups['group'][i]])
-        print input_list[-1]
+#for i in items:
+#    input_list.append([groups['ID'][i], groups['group'][i]])
+#    print input_list[-1]
 #print oracle(input_list[0])
 #p = Pool(8)
 #ALL = p.map(level_set, input_list)
@@ -416,8 +835,8 @@ for i in items:
 #ALL = p.map(level_expan, input_list)
 #print level_set(input_list[0])
 #test_2methods(input_list[0])
-p = Pool(4)
-ALL = p.map(test_2methods, input_list)
+#p = Pool(4)
+#ALL = p.map(test_2methods, input_list)
 #ALL = p.map(get_greedy_group, input_list)
 #ALL = p.map(group_analysis, input_list)
 #[ID, group, acc_mean, acc_min, acc_25] = p.map(get_greedy_group, input_list)
