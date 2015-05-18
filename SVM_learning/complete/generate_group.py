@@ -320,8 +320,8 @@ def des(ID, mean_acc):
     for i in xrange(len(x) - 1):
         z.append(((1 - x[i + 1]) - (1 - x[i])) / step[i])
     ## apply guassian filter on this slope function
-    z = ndimage.filters.gaussian_filter(z, 0.2)
-    return ID, z, y
+    z_filter = ndimage.filters.gaussian_filter(z, 0.2)
+    return ID, z_filter, y, z, x
 
 def level_set(data):
     ## data = [ID, [acc_mean of group(ID)]]
@@ -331,16 +331,18 @@ def level_set(data):
     level_end = []
     print 'seed ID: ' + str(ID)
 
+    des_func = []
     ## if size of group greater than 5, do level set selection.
     if len(mean_acc) > 5:
         ## get the slope of described function, (f(mean_acc) = group_member)'
-        [ID, z, y] = des(ID, mean_acc)
+        [ID, z_filter, y, z, x] = des(ID, mean_acc)
         ## get local minimum of this function
-        local_min = signal.argrelextrema(z, np.less)[0]
+        local_min = signal.argrelextrema(z_filter, np.less)[0]
         ## find each levels end index in group(ID)
+        des_func.append([mean_acc, x, y, z, z_filter])
         for ele in local_min:
             level_end.append(y[ele - 1])
-    return ID, level_end
+    return ID, level_end, des_func
 
 def level_expan(data):
     ## data = [ID, [group(ID)], level_end], group(ID) need to be expaned
@@ -566,7 +568,7 @@ def Distance(test, train, func):
                 Dis[i][j] = -sys.maxint
             #Dis[i][j] = np.linalg.norm(test[i] - train[j])
             #print Dis[i][j]
-        nn.append(heapq.nlargest(40, enumerate(Dis[i]), key=lambda x:x[1]))
+        nn.append(heapq.nlargest(80, enumerate(Dis[i]), key=lambda x:x[1]))
         print nn[-1]
     return nn
 
@@ -609,9 +611,13 @@ def calibrate_mapping(param, scores):
 
 def kmeans_train(D, n, ini_iter, max_iter, eps, func):
     N = 0
-    for ele in D['label']:
-        if ele == 1:
-            N +=1
+    idx = []
+    for i in xrange(len(D['label'])):
+        if D['label'][i] != 1:
+            idx.append(i)
+    data = np.delete(D['fv'], idx, axis = 0)
+    q = np.delete(D['q'], idx, axis = 0)
+    '''
     data = np.zeros([N, D['fv'].shape[1]], dtype = np.float32)
     q = np.zeros(N)
     xx = 0
@@ -620,6 +626,7 @@ def kmeans_train(D, n, ini_iter, max_iter, eps, func):
             data[xx] = D['fv'][i]
             q[xx] = D['q'][i]
             xx += 1
+    '''
     '''
     q_case = get_number_case(q)
     if len(q_case) > 10:
@@ -639,7 +646,7 @@ def kmeans_train(D, n, ini_iter, max_iter, eps, func):
         ret, label, center = cv2.kmeans(data, n, criteria, ini_iter, cv2.KMEANS_RANDOM_CENTERS)
         center = [center, label]
     elif func == 'skl':
-        center = cluster.KMeans(n, 'k-means++', ini_iter, max_iter, eps, 'auto', 1)
+        center = cluster.KMeans(n, 'k-means++', ini_iter, max_iter, eps, 'auto', 0)
         center.fit(data)
     return center
 
@@ -651,17 +658,20 @@ def kmeans_pred(D, center, func):
         labels = center[1]
         idx = 0
         for i in xrange(len(D['q'])):
-            print 'case: ' + str(i)
+            #print 'case: ' + str(i)
             if D['label'][i] == 1:
                 Label[i] = labels[idx]
                 idx += 1
             else:
                 Label[i] = -1
     elif func == 'skl':
+        idx = 0
         for i in xrange(len(D['q'])):
-            print 'case: ' + str(i)
+            #print 'case: ' + str(i)
             if D['label'][i] == 1:
-                Label[i] = center.predict(D['fv'][i])
+                #Label[i] = center.predict(D['fv'][i])
+                Label[i] = center.labels_[idx]
+                idx += 1
             else:
                 Label[i] = -1
     return Label
@@ -710,10 +720,12 @@ fv_raw_train = fv_raw_train_integral['fv']
 #ID = range(842)
 #seeds = range(842)
 #groups = np.load('/home/Hao/Work/Cmts/greedy_group2.npz')
-'''
+"""
 groups = np.load('/home/Hao/Work/Cmts/group_level_expan_remove_too_small2.npz')
+#groups = np.load('/home/Hao/Work/Cmts/expan.npz')
 in_groups = list(groups['group'])
 groups = np.load('/home/Hao/Work/Cmts/group_level_expan_only_too_small2.npz')
+#in_groups = []
 for ele in groups['group']:
     if len(ele) > 1:
         in_groups.append(ele)
@@ -727,15 +739,15 @@ mAPs = np.load('/home/Hao/Work/Cmts/mAP_4_4.npy')
 for ele in mAPs:
     in_ID.append(ele[0])
     in_mAP.append(ele[1])
-xx=0
-yy=[]
-for ele in xrange(len(in_mAP)):
-    if in_mAP[ele] == 0:
-        yy.append(len(in_groups[ele]))
-        xx += 1
-print xx, np.mean(yy)
+#xx=0
+#yy=[]
+#for ele in xrange(len(in_mAP)):
+#    if in_mAP[ele] == 0:
+#        yy.append(len(in_groups[ele]))
+#        xx += 1
+#print xx, np.mean(yy)
 ALL = grous_extract(in_ID, in_groups, in_mAP)
-'''
+"""
 #groups = groups['group']
 #level_end = np.load('/home/Hao/Work/Cmts/level_selection2.npz')
 #input_list = []
@@ -758,9 +770,9 @@ par_one = par['par']
 #train_scores = np.load('/home/sunmin/smax_train_rep.npy')
 #train_scores = np.delete(fv_mid, test_set, axis = 0)
 #test_scores = np.delete(fv_mid, train_set, axis = 0)
-#test_scores = np.load('/home/Hao/Work/Cmts/calibrate/test_mid_cal_rep.npy')
+#test_scores = np.load('/home/Lin/workspace/mid_term_pred/mid_matchest_mr.npy')
 #train_scores = np.load('/home/Hao/Work/Cmts/calibrate/train_mid_cal_rep.npy')
-#ALL = Distance(train_scores, train_scores, dis.cosine)
+#ALL = Distance(test_scores, train_scores, dis.cosine)
 '''
 path = '/home/Hao/Work/mid_features/'
 path_one = '/home/Hao/Work/one_features/'
@@ -772,7 +784,9 @@ for i in xrange(len(calibrate_case['ID'])):
                                  str(1) + '.model', \
                                  calibrate_case['group'][i][0:10]))
 '''
-input_list = []
+#input_list = []
+#for i in xrange(len(groups['ID'])):
+#    input_list.append([groups['ID'][i], groups['acc_mean'][i]])
 '''
 for i in xrange(len(groups['ID'])):
 #for i in xrange(842):

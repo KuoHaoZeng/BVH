@@ -282,12 +282,12 @@ def fisherGN_rank(inp, step = 3, overlap = 1, fps = 25):
 def fisherGN_Raw(ele):
         temp = ele.split('/')
         name = temp[len(temp) - 1]
-        if not os.path.exists(gmm_path + '/' + name + '.npy'):
+        if not os.path.exists(fv_path + '/' + name + '.npy'):
                 #gmm = Vcont.gmm_model(np.load(gmm_path + '/gmm.npz'))
                 #Feature = Vcontutil.Load_Unit_Features(output_dir + '/' + ele, 0)
                 print name + ' go go !!'
                 [Feature, Stamp] = Vcontutil.Load_Raw_Features(ele, 0)
-                Vcontutil.fisher_vector(Feature, gmm, gmm_path + '/' + name)
+                Vcontutil.fisher_vector(Feature, gmm, fv_path + '/' + name)
         else:
                 print name + '.npy already exist!'
 
@@ -1205,7 +1205,7 @@ gmm = Vcont.gmm_model(np.load('/home/Hao/Work/gmm/gmm.npz'))
 #hmdb_set = np.load('/home/Hao/Work/Cmts/hmdb_testing_set.npy')
 #hmdb_set = Vcontutil.numpyHstack(hmdb_set, np.load('/home/Hao/Work/Cmts/hmdb_training_set.npy'))
 #f = open('/home/Hao/Work/debug/match_list.txt', 'r')
-f = open('/home/Hao/Work/match_list.txt', 'r')
+f = open('/home/Hao/Work/Cmts/match_list_backup.txt', 'r')
 video_list = get_video_list(f, video_list)
 #index = np.delete(range(len(video_list)), hmdb_set)
 #video_list = np.delete(video_list, index)
@@ -1214,10 +1214,11 @@ matching_path = '/media/Hao/My Book/raw/'
 input_list = []
 for i in range(len(video_list)):
         #input_list.append([i, '/media/Hao/My Book' + video_list[i][18:]])
-        input_list.append([i, '/media/Hao/My Book/raw_features/' + video_list[i]])
+        #input_list.append([i, '/media/Hao/My Book/raw_features/' + video_list[i]])
+        input_list.append('/media/Hao/My Book/raw_features/' + video_list[i])
         print input_list[-1]
 #gmm_path = '/media/Hao/My Book/debug'
-fv_path = '/media/Hao/My Book/raw_total_fv_3_1_4_14/'
+fv_path = '/media/Hao/My Book/raw_all_fv/'
 '''
 rank_interval = []
 for ele in input_list:
@@ -1227,7 +1228,8 @@ for ele in input_list:
         print rank_interval[-1]
 '''
 p = Pool(4)
-rank_interval = p.map(fisherGN_rank, input_list)
+#rank_interval = p.map(fisherGN_rank, input_list)
+p.map(fisherGN_Raw, input_list)
 #np.save('/media/Hao/My Book/debug/rank_interval', rank_interval)
 
 '''
