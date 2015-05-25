@@ -1,4 +1,4 @@
-import Vcontutil, Vcont, os, subprocess, sys, random, mlpy, time, math, sklearn.metrics, heapq
+import Vcontutil, Vcont, os, subprocess, sys, random, mlpy, time, math, sklearn.metrics, heapq, json
 import pickle as pk
 import numpy as np
 from multiprocessing import Pool
@@ -7,6 +7,8 @@ video_list = []
 video_names = []
 crop = []
 mid_numbers = 842
+gmm = Vcont.gmm_model(np.load('/home/Hao/Work/gmm/gmm.npz'))
+fv_path = '/media/Hao/My Book/raw_whole_fv_demo/'
 
 def get_tuple_index(arr):
 	index = np.zeros(len(arr))
@@ -152,7 +154,7 @@ def fisherGN(ele):
         else:
                 print name + '.npy already exist!'
 
-def fisherGN_rank(inp, step = 3, overlap = 1, fps = 25):
+def fisherGN_rank(inp, step = 5, overlap = 2, fps = 25):
         Q = inp[0]
         ele = inp[1]
         temp = ele.split('/')
@@ -239,6 +241,7 @@ def fisherGN_rank(inp, step = 3, overlap = 1, fps = 25):
                 empty.append(ele)
         return [hi, nohi, boundary, empty]
         '''
+        '''
         fv = []
         label = []
         q = []
@@ -274,6 +277,80 @@ def fisherGN_rank(inp, step = 3, overlap = 1, fps = 25):
                 fv.append(Vcontutil.fisher_vector_rank(D, gmm))
                 label.append(0)
                 q.append(Q)
+        '''
+        fv = []
+        label = []
+        q = []
+        empty = []
+        for ele in xrange(num_of_interval):
+            greater = np.greater_equal(time_stamp, ele * frame_over)
+            less = np.less_equal(time_stamp, ele * frame_over + frame_length)
+            interval = np.equal(greater, less)
+            interval1 = np.where(interval == False)[0]
+            interval2 = np.where(interval == True)[0]
+            if len(interval2) == 0:
+                if ele in hi:
+                    hi.remove(ele)
+                elif ele in nohi:
+                    nohi.remove(ele)
+                elif ele in boundary:
+                    boundary.remove(ele)
+                empty.append(ele)
+            else:
+                D = np.delete(Feature, interval1, axis = 0)
+                fv.append(Vcontutil.fisher_vector_rank(D, gmm))
+                if ele in hi:
+                    label.append(1)
+                elif ele in nohi:
+                    label.append(0)
+                elif ele in boundary:
+                    label.append(0)
+                q.append(Q)
+
+        print [hi, nohi, boundary, empty]
+        print label
+        np.savez(fv_path + name, fv = fv, label = label, q = q)
+        return [hi, nohi, boundary, empty]
+
+def fisherGN_rank_UW(inp):
+        class_name = inp[0]
+        name = inp[1]
+        Q = inp[2]
+        feature_path = '/media/Hao/Seagate Backup Plus Drive/HL_features/' + name
+        [Feature, time_stamp] = Vcontutil.Load_Raw_Features(feature_path, 0)
+        clips_path = '/media/Hao/Seagate Backup Plus Drive/UW/HL/' + class_name + '/' + name + '/test_v1/hard_label.json'
+        clips = open(clips_path).read()
+        clips = json.loads(clips)
+        labels = clips[1]
+        clip = clips[0]
+        fv = []
+        label = []
+        q = []
+        empty = []
+        hi = []
+        nohi = []
+        boundary = []
+        for i in xrange(len(labels)):
+            greater = np.greater_equal(time_stamp, clip[i][0])
+            less = np.less_equal(time_stamp, clip[i][1])
+            interval = np.equal(greater, less)
+            interval1 = np.where(interval == False)[0]
+            interval2 = np.where(interval == True)[0]
+            D = np.delete(Feature, interval1, axis = 0)
+            fv.append(Vcontutil.fisher_vector_rank(D, gmm))
+            q.append(Q)
+            if len(interval2) == 0:
+                empty.append(clip[i])
+            else:
+                if labels[i] == 1:
+                    hi.append(clip[i])
+                    label.append(1)
+                elif labels[i] == -1:
+                    nohi.append(clip[i])
+                    label.append(0)
+                elif labels[i] == 0:
+                    boundary.append(clip[i])
+                    label.append(0)
 
         print [hi, nohi, boundary, empty]
         np.savez(fv_path + name, fv = fv, label = label, q = q)
@@ -1199,7 +1276,7 @@ Features = Vcontutil.numpyVstack(Features, fv_temp)
 gmm_path = '/home/Hao/Work/gmm/'
 mid_gmm(Features, gmm_path, 256, 4)
 '''
-
+'''
 ### Fisher Vector encoding
 gmm = Vcont.gmm_model(np.load('/home/Hao/Work/gmm/gmm.npz'))
 #hmdb_set = np.load('/home/Hao/Work/Cmts/hmdb_testing_set.npy')
@@ -1214,11 +1291,12 @@ matching_path = '/media/Hao/My Book/raw/'
 input_list = []
 for i in range(len(video_list)):
         #input_list.append([i, '/media/Hao/My Book' + video_list[i][18:]])
-        #input_list.append([i, '/media/Hao/My Book/raw_features/' + video_list[i]])
-        input_list.append('/media/Hao/My Book/raw_features/' + video_list[i])
+        input_list.append([i, '/media/Hao/My Book/raw_features/' + video_list[i]])
+        #input_list.append('/media/Hao/My Book/raw_features/' + video_list[i])
         print input_list[-1]
 #gmm_path = '/media/Hao/My Book/debug'
-fv_path = '/media/Hao/My Book/raw_all_fv/'
+fv_path = '/media/Hao/My Book/raw_whole_fv_demo/'
+'''
 '''
 rank_interval = []
 for ele in input_list:
@@ -1227,11 +1305,13 @@ for ele in input_list:
         rank_interval.append(fisherGN_rank(ele))
         print rank_interval[-1]
 '''
+'''
 p = Pool(4)
-#rank_interval = p.map(fisherGN_rank, input_list)
-p.map(fisherGN_Raw, input_list)
+#fisherGN_rank(input_list[0])
+rank_interval = p.map(fisherGN_rank, input_list)
+#p.map(fisherGN_Raw, input_list)
 #np.save('/media/Hao/My Book/debug/rank_interval', rank_interval)
-
+'''
 '''
 mid_set = np.load('/home/Hao/Work/Cmts/hmdb_training_set.npy')
 f = open('/home/Hao/Work/hmdb_list.txt', 'r')
